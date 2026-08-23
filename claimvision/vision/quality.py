@@ -1,19 +1,27 @@
-"""Lightweight image-quality gate used before expensive CV inference."""
+"""Image-quality gate used before expensive CV inference."""
 
 from pathlib import Path
 
-from PIL import Image, ImageStat
+from PIL import Image, ImageFilter, ImageStat
 
 from claimvision.schemas import ImageQualityResult
+from config import IMAGE_MIN_BRIGHTNESS, IMAGE_MIN_HEIGHT, IMAGE_MIN_WIDTH
 
 
 class ImageQualityChecker:
-    """Reject images that are clearly unsuitable for damage detection."""
+    """Reject images that are unsuitable for reliable damage detection."""
 
-    def __init__(self, min_width: int = 320, min_height: int = 240, min_brightness: float = 8.0):
+    def __init__(
+        self,
+        min_width: int = IMAGE_MIN_WIDTH,
+        min_height: int = IMAGE_MIN_HEIGHT,
+        min_brightness: float = IMAGE_MIN_BRIGHTNESS,
+        min_sharpness: float = 8.0,
+    ):
         self.min_width = min_width
         self.min_height = min_height
         self.min_brightness = min_brightness
+        self.min_sharpness = min_sharpness
 
     def check(self, image_path: str | Path) -> ImageQualityResult:
         reasons: list[str] = []
@@ -21,21 +29,30 @@ class ImageQualityChecker:
 
         try:
             with Image.open(image_path) as image:
-                image = image.convert("RGB")
+                image = image.convert("L")
                 width, height = image.size
                 metrics["width"] = float(width)
                 metrics["height"] = float(height)
-                brightness = sum(ImageStat.Stat(image).mean) / 3.0
+                brightness = float(ImageStat.Stat(image).mean[0])
                 metrics["brightness"] = round(brightness, 2)
+
+                # Variance of the high-frequency component is a lightweight
+                # sharpness/blur proxy; it is not a learned quality model.
+                blurred = image.filter(ImageFilter.GaussianBlur(radius=2))
+                diff = ImageStat.Stat(image).mean[0] - ImageStat.Stat(blurred).mean[0]
+                sharpness = abs(float(diff))
+                metrics["sharpness_proxy"] = round(sharpness, 3)
 
                 if width < self.min_width or height < self.min_height:
                     reasons.append("Image resolution is too low for reliable analysis.")
                 if brightness < self.min_brightness:
                     reasons.append("Image is extremely dark.")
+                if sharpness < self.min_sharpness:
+                    reasons.append("Image may be too blurred for reliable damage detection.")
 
         except Exception as exc:
             return ImageQualityResult(False, 0.0, [f"Unable to read image: {exc}"])
 
         valid = not reasons
-        score = 1.0 if valid else max(0.0, 1.0 - 0.35 * len(reasons))
+        score = max(0.0, 1.0 - 0.30 * len(reasons))
         return ImageQualityResult(valid, round(score, 3), reasons, metrics)
