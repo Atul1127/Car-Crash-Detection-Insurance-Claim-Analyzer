@@ -1,6 +1,6 @@
 """Interpretable baseline severity estimation from detection geometry."""
 
-from claimvision.schemas import DamageAssessment
+from car_crash_claim_analyzer.schemas import DamageAssessment
 
 
 class SeverityEstimator:

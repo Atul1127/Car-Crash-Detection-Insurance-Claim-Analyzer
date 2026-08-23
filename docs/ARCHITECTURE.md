@@ -1,4 +1,4 @@
-# ClaimVision AI — Architecture
+# Car Crash Claim Analyzer — Architecture
 
 ## Target pipeline
 

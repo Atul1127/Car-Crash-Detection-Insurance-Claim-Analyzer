@@ -1,12 +1,12 @@
-"""Top-level ClaimVision orchestration layer."""
+"""Top-level Car Crash Claim Analyzer orchestration layer."""
 
 from pathlib import Path
 
-from claimvision.schemas import ClaimReport
-from claimvision.vision.quality import ImageQualityChecker
+from car_crash_claim_analyzer.schemas import ClaimReport
+from car_crash_claim_analyzer.vision.quality import ImageQualityChecker
 
 
-class ClaimVisionPipeline:
+class CarCrashClaimAnalyzerPipeline:
     """Coordinate quality checks and downstream modules without coupling them."""
 
     def __init__(self, quality_checker: ImageQualityChecker | None = None):

@@ -129,7 +129,7 @@ Car-Crash-Detection-Insurance-Claim-Analyzer/
 ├── data.yaml
 ├── chainlit.md
 │
-├── claimvision/
+├── car_crash_claim_analyzer/
 │   ├── __init__.py
 │   ├── schemas.py
 │   ├── pipeline.py

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PIL import Image, ImageChops, ImageFilter, ImageStat
 
-from claimvision.schemas import ImageQualityResult
+from car_crash_claim_analyzer.schemas import ImageQualityResult
 from config import IMAGE_MIN_BRIGHTNESS, IMAGE_MIN_HEIGHT, IMAGE_MIN_WIDTH
 
 

@@ -1,6 +1,6 @@
 """Explainable claim-report rendering."""
 
-from claimvision.schemas import ClaimDecision, ClaimInformation, DamageAssessment
+from car_crash_claim_analyzer.schemas import ClaimDecision, ClaimInformation, DamageAssessment
 
 
 class ClaimReportBuilder:
