@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from PIL import Image, ImageFilter, ImageStat
+from PIL import Image, ImageChops, ImageFilter, ImageStat
 
 from claimvision.schemas import ImageQualityResult
 from config import IMAGE_MIN_BRIGHTNESS, IMAGE_MIN_HEIGHT, IMAGE_MIN_WIDTH
@@ -37,18 +37,11 @@ class ImageQualityChecker:
                 brightness = float(ImageStat.Stat(image).mean[0])
                 metrics["brightness"] = round(brightness, 2)
 
-                # The previous implementation compared the mean brightness of
-                # an image with a blurred copy. That is not a blur detector:
-                # both means are normally almost identical. Use the mean
-                # absolute high-frequency difference instead.
+                # Mean absolute high-frequency difference is a simple blur proxy.
                 blurred = image.filter(ImageFilter.GaussianBlur(radius=2))
-                sharpness = ImageStat.Stat(
-                    Image.fromarray(
-                        __import__("PIL.ImageChops", fromlist=["ImageChops"])
-                        .ImageChops.difference(image, blurred)
-                    )
-                ).mean[0]
-                metrics["sharpness_proxy"] = round(float(sharpness), 3)
+                high_frequency = ImageChops.difference(image, blurred)
+                sharpness = float(ImageStat.Stat(high_frequency).mean[0])
+                metrics["sharpness_proxy"] = round(sharpness, 3)
 
                 if width < self.min_width or height < self.min_height:
                     reasons.append(
