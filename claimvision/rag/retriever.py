@@ -3,6 +3,7 @@
 from collections import Counter
 import math
 import re
+from pathlib import Path
 
 from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -20,7 +21,39 @@ class HybridPolicyRetriever:
             model_kwargs={"device": "cpu"},
         )
         self.vector_db = FAISS.from_documents(documents, self.embeddings)
-        self.tokenized = [self._tokens(doc.page_content) for doc in documents]
+        self._prepare_lexical_index()
+
+    @classmethod
+    def load(cls, index_path: str | Path, embedding_model: str, top_k: int = 6) -> "HybridPolicyRetriever":
+        """Load a persisted FAISS index without rebuilding document embeddings."""
+        obj = cls.__new__(cls)
+        obj.top_k = top_k
+        obj.embeddings = HuggingFaceEmbeddings(
+            model_name=embedding_model,
+            model_kwargs={"device": "cpu"},
+        )
+        obj.vector_db = FAISS.load_local(
+            str(index_path),
+            obj.embeddings,
+            allow_dangerous_deserialization=True,
+        )
+        obj.documents = []
+        for doc_id in obj.vector_db.index_to_docstore_id.values():
+            document = obj.vector_db.docstore.search(doc_id)
+            if document is None:
+                raise ValueError(f"Persisted FAISS index is missing document {doc_id}")
+            obj.documents.append(document)
+        obj._prepare_lexical_index()
+        return obj
+
+    def save(self, index_path: str | Path) -> None:
+        """Persist the FAISS index and its document store."""
+        path = Path(index_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.vector_db.save_local(str(path))
+
+    def _prepare_lexical_index(self) -> None:
+        self.tokenized = [self._tokens(doc.page_content) for doc in self.documents]
         self.avgdl = sum(map(len, self.tokenized)) / max(len(self.tokenized), 1)
 
     def retrieve(self, query: str) -> list[Document]:
