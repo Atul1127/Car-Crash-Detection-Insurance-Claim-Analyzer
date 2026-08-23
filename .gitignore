@@ -1,44 +1,48 @@
-# Environment
-.venv/
-venv/
-env/
-.env
-*.env
-
 # Python
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
-*.pyc
 
-# Model weights (too large for GitHub)
-*.pt
-*.pth
-*.onnx
-*.weights
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
 
-# FAISS index (regenerated at runtime)
-faiss_index/
-
-# Chainlit internals
-.chainlit/
-
-# Training data folders
-train/
-valid/
-test/
-runs/
-
-# Temp files created at runtime
-temp_upload_*
+# Secrets
+.env
+.env.*
 
 # Jupyter
 .ipynb_checkpoints/
 
-# VS Code
+# IDE
 .vscode/
+.idea/
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Large ML model weights
+*.pt
+*.pth
+*.onnx
+*.h5
+*.pkl
+*.joblib
+
+# Generated ML artifacts
+runs/
+faiss_index/
+wandb/
+mlruns/
+vectorstore/
+.chroma/
+
+# Temporary uploaded files
+temp_upload_*
+
+# Logs
+*.log
