@@ -34,6 +34,16 @@ class ClaimDecisionEngine:
         if not damage.detections:
             warnings.append("No supported vehicle damage was detected.")
 
+        unknown_damage = any(
+            (d.label or "").strip().lower() in {"unknown", "unclassified", "other"}
+            for d in damage.detections
+        )
+        if unknown_damage:
+            warnings.append(
+                "The vision model detected damage but did not assign a supported damage category; "
+                "the label must not be interpreted as a vehicle class."
+            )
+
         severity = damage.severity or "unknown"
         severity_score = damage.severity_score or 0.0
         evidence_text = " ".join(item.text.lower() for item in evidence)
@@ -55,13 +65,19 @@ class ClaimDecisionEngine:
         else:
             coverage_status = "uncertain"
 
+        # An unsupported/unknown visual class means the claim cannot be
+        # automatically classified even when policy retrieval succeeds.
+        if unknown_damage:
+            coverage_status = "uncertain"
+
         risk_score = min(
             1.0,
             0.15
             + (0.25 if severity == "severe" else 0.12 if severity == "moderate" else 0.05)
             + (0.15 if not claim.policy_number else 0.0)
             + (0.10 if not claim.incident_date else 0.0)
-            + (0.10 if exclusion_terms > coverage_terms else 0.0),
+            + (0.10 if exclusion_terms > coverage_terms else 0.0)
+            + (0.10 if unknown_damage else 0.0),
         )
 
         if warnings or coverage_status in {"uncertain", "potential_exclusion"}:
