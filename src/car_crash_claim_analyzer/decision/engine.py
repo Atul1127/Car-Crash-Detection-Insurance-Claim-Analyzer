@@ -22,6 +22,8 @@ _DAMAGE_TERMS = {
     "tail_lamp": ("taillamp", "tail lamp", "tail light", "tail-light"),
 }
 
+_UNKNOWN_DAMAGE_LABELS = {"unknown", "unclassified", "unclassified_damage", "other"}
+
 
 class ClaimDecisionEngine:
     """Convert evidence into a transparent preliminary claim assessment."""
@@ -30,16 +32,8 @@ class ClaimDecisionEngine:
     def _evidence_coverage_status(
         evidence: list[PolicyEvidence], damage: DamageAssessment
     ) -> tuple[str, int, int]:
-        """Classify only what the retrieved text actually establishes.
-
-        A generic occurrence of words such as ``coverage`` or ``covered`` is
-        never sufficient. Coverage requires an explicit vehicle-loss/own-damage
-        provision. An exclusion is considered applicable only when the retrieved
-        text explicitly names a detected damage component/type.
-        """
         texts = [item.text.lower() for item in evidence]
         all_text = " ".join(texts)
-
         coverage_patterns = (
             "own damage",
             "loss of or damage to the vehicle",
@@ -51,9 +45,7 @@ class ClaimDecisionEngine:
         )
         coverage_hits = sum(pattern in all_text for pattern in coverage_patterns)
 
-        detected_labels = {
-            (d.label or "").strip().lower() for d in damage.detections
-        }
+        detected_labels = {(d.label or "").strip().lower() for d in damage.detections}
         detected_terms: set[str] = set()
         for label in detected_labels:
             detected_terms.update(_DAMAGE_TERMS.get(label, ()))
@@ -62,9 +54,7 @@ class ClaimDecisionEngine:
         if detected_terms:
             exclusion_markers = ("excluded", "exclusion", "not covered", "shall not cover")
             for text in texts:
-                if any(marker in text for marker in exclusion_markers) and any(
-                    term in text for term in detected_terms
-                ):
+                if any(marker in text for marker in exclusion_markers) and any(term in text for term in detected_terms):
                     exclusion_hits += 1
 
         if exclusion_hits > 0:
@@ -73,14 +63,8 @@ class ClaimDecisionEngine:
             return "potentially_covered", coverage_hits, exclusion_hits
         return "uncertain", coverage_hits, exclusion_hits
 
-    def evaluate(
-        self,
-        damage: DamageAssessment,
-        claim: ClaimInformation,
-        evidence: list[PolicyEvidence],
-    ) -> ClaimDecision:
+    def evaluate(self, damage: DamageAssessment, claim: ClaimInformation, evidence: list[PolicyEvidence]) -> ClaimDecision:
         warnings: list[str] = []
-
         if not evidence:
             return ClaimDecision(
                 decision="manual_review",
@@ -97,10 +81,7 @@ class ClaimDecisionEngine:
         if not damage.detections:
             warnings.append("No supported vehicle damage was detected.")
 
-        unknown_damage = any(
-            (d.label or "").strip().lower() in {"unknown", "unclassified", "other"}
-            for d in damage.detections
-        )
+        unknown_damage = any((d.label or "").strip().lower() in _UNKNOWN_DAMAGE_LABELS for d in damage.detections)
         if unknown_damage:
             warnings.append(
                 "The vision model detected damage but did not assign a supported damage category; "
@@ -109,13 +90,8 @@ class ClaimDecisionEngine:
 
         severity = damage.severity or "unknown"
         severity_score = damage.severity_score or 0.0
+        coverage_status, coverage_hits, exclusion_hits = self._evidence_coverage_status(evidence, damage)
 
-        coverage_status, coverage_hits, exclusion_hits = self._evidence_coverage_status(
-            evidence, damage
-        )
-
-        # Unknown/unclassified damage cannot be matched to a component-specific
-        # exclusion and should remain a manual-review case.
         if unknown_damage:
             coverage_status = "uncertain"
 
@@ -141,7 +117,6 @@ class ClaimDecisionEngine:
             "Coverage status is based on explicit applicable policy language, not keyword presence. "
             "This is a preliminary evidence-based assessment, not an automatic approval or denial."
         )
-
         return ClaimDecision(
             decision=decision,
             coverage_status=coverage_status,
