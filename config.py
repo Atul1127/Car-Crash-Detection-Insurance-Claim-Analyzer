@@ -6,7 +6,7 @@ import os
 ROOT_DIR = Path(__file__).resolve().parent
 
 # Insurance policy documents. Override with POLICY_DOCUMENT_PATH when needed.
-DEFAULT_POLICY_PATH = ROOT_DIR / "Terms and Conditions for Private Car_2.pdf"
+DEFAULT_POLICY_PATH = ROOT_DIR / "data" / "policies" / "private_car_policy.pdf"
 POLICY_DOCUMENT_PATH = Path(os.getenv("POLICY_DOCUMENT_PATH", str(DEFAULT_POLICY_PATH)))
 SOURCES: list[str] = [str(POLICY_DOCUMENT_PATH)]
 SOURCE_LABEL = "insurance-policy"
@@ -18,7 +18,7 @@ CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "200"))
 # Models
 MODEL_NAME = os.getenv("LLM_MODEL", "llama3.1")
 LOCAL_EMBED_MODEL = os.getenv("EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
-YOLO_MODEL_PATH = os.getenv("YOLO_MODEL_PATH", "best.pt")
+YOLO_MODEL_PATH = os.getenv("YOLO_MODEL_PATH", str(ROOT_DIR / "models" / "best.pt"))
 
 # Computer vision inference
 YOLO_CONFIDENCE = float(os.getenv("YOLO_CONFIDENCE", "0.25"))
@@ -35,7 +35,7 @@ RETRIEVAL_K = int(os.getenv("RETRIEVAL_K", "4"))
 MEMORY_WINDOW = int(os.getenv("MEMORY_WINDOW", "5"))
 
 # FAISS persistence
-FAISS_INDEX_PATH = os.getenv("FAISS_INDEX_PATH", str(ROOT_DIR / "faiss_index"))
+FAISS_INDEX_PATH = os.getenv("FAISS_INDEX_PATH", str(ROOT_DIR / ".cache" / "faiss_index"))
 FAISS_INDEX_URL_MAP_PATH = os.getenv(
-    "FAISS_INDEX_URL_MAP_PATH", str(ROOT_DIR / "faiss_url_map.json")
+    "FAISS_INDEX_URL_MAP_PATH", str(ROOT_DIR / ".cache" / "faiss_url_map.json")
 )

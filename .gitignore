@@ -1,49 +1,38 @@
 # Python
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
+.pytest_cache/
 
-# Virtual environments
+# Environments and secrets
 .venv/
 venv/
 env/
-ENV/
-
-# Secrets
 .env
 .env.*
+!.env.example
 
-# Jupyter
-.ipynb_checkpoints/
-
-# IDE
+# IDE / OS
 .vscode/
 .idea/
-
-# OS
 .DS_Store
 Thumbs.db
 
-# Large ML model weights
+# ML weights and generated artifacts
 *.pt
 *.pth
 *.onnx
 *.h5
 *.pkl
 *.joblib
-
-# Generated ML artifacts
 runs/
-faiss_index/
-faiss_index.manifest.json
 wandb/
 mlruns/
+.cache/
+faiss_index/
+faiss_url_map.json
 vectorstore/
 .chroma/
 
-# Temporary uploaded files
-temp_upload_*
-
-# Logs
+# Logs / temporary uploads
 *.log
+temp_upload_*

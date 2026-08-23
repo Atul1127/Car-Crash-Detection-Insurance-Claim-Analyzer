@@ -6,7 +6,7 @@ def main():
 
     # 2. Run training locally on your NVIDIA GeForce RTX 4050
     results = model.train(
-        data="data.yaml",   # Path to your unzipped data.yaml file
+        data="data/damage_dataset.yaml",   # Path to your unzipped data.yaml file
         epochs=50,          # 50 epochs
         imgsz=640,          # Standard training resolution
         device="0",         # Uses your primary GPU
