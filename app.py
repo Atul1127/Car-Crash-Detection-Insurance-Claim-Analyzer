@@ -39,7 +39,7 @@ def resolve_weights() -> Path:
     )
 
 
-# ── ClaimVision modules ───────────────────────────────────────────────────────
+# ── Application modules ───────────────────────────────────────────────────────
 detector = DamageDetector(resolve_weights())
 severity_estimator = SeverityEstimator()
 vision_pipeline = ClaimVisionPipeline()
@@ -103,7 +103,7 @@ async def main(message: cl.Message):
             if "image" not in element.mime:
                 continue
 
-            await cl.Message(content="🔍 Running ClaimVision image analysis...").send()
+            await cl.Message(content="🔍 Running image analysis...").send()
             report = vision_pipeline.run(element.path, detector=detector)
 
             if not report.image_quality.valid:
@@ -152,7 +152,7 @@ async def main(message: cl.Message):
 
             await cl.Message(
                 content=(
-                    "✅ **Visual Analysis Complete**\n\n"
+                    "✅ **Image Analysis Complete**\n\n"
                     f"**Damage:**\n{'\n'.join(damage_lines)}\n\n"
                     f"**Severity:** `{report.damage.severity or 'unknown'}`\n"
                     f"**Severity score:** `{report.damage.severity_score or 0:.2f}`\n"
@@ -203,8 +203,8 @@ async def main(message: cl.Message):
     if not message_query.strip():
         return
 
-    # ── Advanced policy evidence ──────────────────────────────────────────────
-    await cl.Message(content="📑 **Hybrid Policy RAG:** retrieving and reranking evidence...").send()
+    # ── Policy evidence ──────────────────────────────────────────────────────
+    await cl.Message(content="📑 **Policy Retrieval:** retrieving and reranking evidence...").send()
     evidence = policy_rag.retrieve(message_query)
     policy_context = format_context(evidence)
 
@@ -244,7 +244,7 @@ async def main(message: cl.Message):
         )
         await cl.Message(
             content=(
-                f"🤖 **Multimodal Claim Assessment**\n\n{response}\n\n"
+                f"🤖 **Claim Assessment**\n\n{response}\n\n"
                 f"## Structured Decision\n"
                 f"- Decision: `{decision.decision}`\n"
                 f"- Coverage status: `{decision.coverage_status}`\n"
