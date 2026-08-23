@@ -16,7 +16,8 @@ CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1000"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "200"))
 
 # Models
-MODEL_NAME = os.getenv("LLM_MODEL", "llama3.1")
+# Local Ollama model. Keep this aligned with `ollama list`.
+MODEL_NAME = os.getenv("LLM_MODEL", "llama3.2:3b")
 LOCAL_EMBED_MODEL = os.getenv("EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
 YOLO_MODEL_PATH = os.getenv("YOLO_MODEL_PATH", str(ROOT_DIR / "models" / "best.pt"))
 
