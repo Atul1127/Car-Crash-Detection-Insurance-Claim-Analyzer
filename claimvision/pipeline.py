@@ -14,12 +14,12 @@ class ClaimVisionPipeline:
 
     def validate_image(self, image_path: str | Path) -> ClaimReport:
         quality = self.quality_checker.check(image_path)
-        return ClaimReport(image_quality=quality, damage=None)  # type: ignore[arg-type]
+        return ClaimReport(image_quality=quality)
 
     def run(self, image_path: str | Path, detector=None) -> ClaimReport:
         quality = self.quality_checker.check(image_path)
         if not quality.valid:
-            return ClaimReport(image_quality=quality, damage=None)  # type: ignore[arg-type]
+            return ClaimReport(image_quality=quality)
 
         if detector is None:
             raise ValueError("A damage detector is required after image validation.")
