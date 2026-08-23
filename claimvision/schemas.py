@@ -59,7 +59,7 @@ class ClaimDecision:
 @dataclass
 class ClaimReport:
     image_quality: ImageQualityResult
-    damage: DamageAssessment
+    damage: DamageAssessment | None = None
     claim_info: ClaimInformation = field(default_factory=ClaimInformation)
     decision: ClaimDecision | None = None
     explainability: dict[str, Any] = field(default_factory=dict)
