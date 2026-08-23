@@ -1,0 +1,329 @@
+name: Restructure project
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  restructure:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clean and restructure repository
+        shell: bash
+        run: |
+          set -e
+          mkdir -p src data/policies data/samples scripts models tests
+
+          if [ -d car_crash_claim_analyzer ] && [ ! -d src/car_crash_claim_analyzer ]; then
+            git mv car_crash_claim_analyzer src/car_crash_claim_analyzer
+          fi
+
+          if [ -f "Terms and Conditions for Private Car_2.pdf" ]; then
+            git mv "Terms and Conditions for Private Car_2.pdf" data/policies/private_car_policy.pdf
+          fi
+          if [ -f car_crash.jpg ]; then git mv car_crash.jpg data/samples/car_crash.jpg; fi
+          if [ -f broken_window.jpeg ]; then git mv broken_window.jpeg data/samples/broken_window.jpeg; fi
+
+          if [ -f data.yaml ]; then git mv data.yaml data/damage_dataset.yaml; fi
+          if [ -f train_cnn.py ]; then git mv train_cnn.py scripts/train_yolo.py; fi
+
+          rm -f chain.py embeddings.py loader.py llm.py README.dataset.txt README.roboflow.txt
+
+          python - <<'PY'
+          from pathlib import Path
+
+          app = Path('app.py')
+          text = app.read_text(encoding='utf-8')
+          marker = 'from pathlib import Path\n'
+          bootstrap = marker + '\n# src-layout bootstrap for local Chainlit execution.\nimport sys\nsys.path.insert(0, str(Path(__file__).resolve().parent / "src"))\n'
+          if 'parent / "src"' not in text:
+              text = text.replace(marker, bootstrap, 1)
+          app.write_text(text, encoding='utf-8')
+
+          config = Path('config.py')
+          text = config.read_text(encoding='utf-8')
+          text = text.replace('ROOT_DIR / "Terms and Conditions for Private Car_2.pdf"', 'ROOT_DIR / "data" / "policies" / "private_car_policy.pdf"')
+          text = text.replace('os.getenv("YOLO_MODEL_PATH", "best.pt")', 'os.getenv("YOLO_MODEL_PATH", str(ROOT_DIR / "models" / "best.pt"))')
+          text = text.replace('str(ROOT_DIR / "faiss_index")', 'str(ROOT_DIR / ".cache" / "faiss_index")')
+          text = text.replace('str(ROOT_DIR / "faiss_url_map.json")', 'str(ROOT_DIR / ".cache" / "faiss_url_map.json")')
+          config.write_text(text, encoding='utf-8')
+
+          train = Path('scripts/train_yolo.py')
+          if train.exists():
+              text = train.read_text(encoding='utf-8').replace('data="data.yaml"', 'data="data/damage_dataset.yaml"')
+              train.write_text(text, encoding='utf-8')
+
+          dataset = Path('data/damage_dataset.yaml')
+          if dataset.exists():
+              text = dataset.read_text(encoding='utf-8')
+              text = text.replace('train: train/images', 'train: train/images').replace('val: valid/images', 'val: valid/images').replace('test: test/images', 'test: test/images')
+              dataset.write_text(text, encoding='utf-8')
+          PY
+
+          cat > models/README.md <<'EOF'
+          # Model weights
+
+          Place the trained YOLO weights at:
+
+          `models/best.pt`
+
+          Model weights are intentionally ignored by Git. Do not commit private or large `.pt` files.
+          EOF
+
+          cat > data/README.md <<'EOF'
+          # Data
+
+          - `policies/` contains policy documents used by the RAG pipeline.
+          - `samples/` contains small demonstration images used for local testing.
+          - `damage_dataset.yaml` describes the YOLO training dataset; the actual training dataset is not stored in this repository.
+
+          Dataset attribution: the original car-damage dataset was exported from Roboflow and contains YOLOv8 annotations.
+          EOF
+
+          cat > tests/conftest.py <<'EOF'
+          import sys
+          from pathlib import Path
+
+          ROOT = Path(__file__).resolve().parents[1]
+          sys.path.insert(0, str(ROOT / "src"))
+          EOF
+
+          cat > tests/test_imports.py <<'EOF'
+          def test_core_imports():
+              from car_crash_claim_analyzer.pipeline import CarCrashClaimAnalyzerPipeline
+              from car_crash_claim_analyzer.schemas import ClaimInformation
+              from car_crash_claim_analyzer.vision.detector import DamageDetector
+              from car_crash_claim_analyzer.rag.pipeline import PolicyRAGPipeline
+              from car_crash_claim_analyzer.decision.pipeline import ClaimDecisionPipeline
+              from car_crash_claim_analyzer.claim.pipeline import ClaimDocumentPipeline
+
+              assert CarCrashClaimAnalyzerPipeline
+              assert ClaimInformation
+              assert DamageDetector
+              assert PolicyRAGPipeline
+              assert ClaimDecisionPipeline
+              assert ClaimDocumentPipeline
+          EOF
+
+          cat > docs/PROJECT_STRUCTURE.md <<'EOF'
+          # Project Structure
+
+          ```text
+          Car-Crash-Detection-Insurance-Claim-Analyzer/
+          ├── app.py
+          ├── config.py
+          ├── chainlit.md
+          ├── requirements.txt
+          ├── .env.example
+          ├── src/
+          │   └── car_crash_claim_analyzer/
+          │       ├── claim/
+          │       ├── decision/
+          │       ├── rag/
+          │       ├── vision/
+          │       ├── pipeline.py
+          │       └── schemas.py
+          ├── data/
+          │   ├── policies/
+          │   ├── samples/
+          │   └── damage_dataset.yaml
+          ├── models/
+          ├── scripts/
+          ├── tests/
+          └── docs/
+          ```
+          EOF
+
+          cat > .env.example <<'EOF'
+          # Optional local configuration
+          LLM_MODEL=llama3.1
+          EMBED_MODEL=sentence-transformers/all-MiniLM-L6-v2
+          YOLO_MODEL_PATH=models/best.pt
+          YOLO_DEVICE=auto
+          YOLO_CONFIDENCE=0.25
+          YOLO_IOU=0.45
+          RETRIEVAL_K=4
+          EOF
+
+          cat > requirements.txt <<'EOF'
+          chainlit
+          pillow
+          ultralytics
+          torch
+          torchvision
+          opencv-python
+          pydantic
+          pypdf
+          pytesseract
+          faiss-cpu
+          sentence-transformers
+          langchain-core
+          langchain-community
+          langchain-huggingface
+          langchain-text-splitters
+          EOF
+
+          cat > chainlit.md <<'EOF'
+          # Car Crash Detection & Insurance Claim Analyzer
+
+          Upload a vehicle-damage image and optionally a claim document.
+
+          The system performs image quality validation, YOLOv8 damage detection, severity estimation, claim OCR/extraction, policy-grounded retrieval, and preliminary explainable claim assessment.
+          EOF
+
+          cat > README.md <<'EOF'
+          # Car Crash Detection & Insurance Claim Analyzer
+
+          An end-to-end AI system that combines computer vision, claim-document extraction, hybrid policy RAG, and explainable insurance claim decision support.
+
+          ## Pipeline
+
+          ```text
+          Vehicle Image
+               ↓
+          Image Quality Gate
+               ↓
+          YOLOv8 Damage Detection
+               ↓
+          Damage Classification
+               ↓
+          Severity Estimation
+               │
+               ├───────────────┐
+               ↓               ↓
+          Claim OCR       Policy Document
+          + Metadata      Hybrid RAG
+               │               │
+               └───────┬───────┘
+                       ↓
+                 Claim Decision
+                 Risk + Coverage
+                       ↓
+                Explainable Report
+          ```
+
+          ## Project Structure
+
+          ```text
+          Car-Crash-Detection-Insurance-Claim-Analyzer/
+          ├── app.py
+          ├── config.py
+          ├── chainlit.md
+          ├── requirements.txt
+          ├── .env.example
+          ├── src/
+          │   └── car_crash_claim_analyzer/
+          │       ├── vision/
+          │       ├── claim/
+          │       ├── rag/
+          │       ├── decision/
+          │       ├── pipeline.py
+          │       └── schemas.py
+          ├── data/
+          │   ├── policies/
+          │   ├── samples/
+          │   └── damage_dataset.yaml
+          ├── models/
+          ├── scripts/
+          ├── tests/
+          └── docs/
+          ```
+
+          ## Components
+
+          - **Computer Vision:** YOLOv8 damage detection and interpretable severity estimation.
+          - **Claim Intelligence:** OCR, field extraction, normalization, and validation.
+          - **Policy RAG:** PDF parsing, chunking, dense FAISS retrieval, BM25-style sparse retrieval, query expansion, reranking, and context compression.
+          - **Decision Engine:** Evidence-grounded preliminary coverage and risk assessment with explicit uncertainty.
+          - **UI:** Chainlit.
+
+          ## Setup
+
+          ```bash
+          python -m venv .venv
+          .venv\\Scripts\\activate
+          pip install -r requirements.txt
+          ```
+
+          Put the trained YOLO model at `models/best.pt` (model weights are intentionally not committed).
+
+          Start the application:
+
+          ```bash
+          chainlit run app.py
+          ```
+
+          ## Development
+
+          Run the smoke tests:
+
+          ```bash
+          pytest -q
+          ```
+
+          See `docs/ARCHITECTURE.md` for the system design and `docs/PROJECT_STRUCTURE.md` for repository conventions.
+
+          ## Status
+
+          Active development toward a production-oriented multimodal insurance claim intelligence system.
+          EOF
+
+          cat > .gitignore <<'EOF'
+          # Python
+          __pycache__/
+          *.py[cod]
+          .pytest_cache/
+
+          # Environments and secrets
+          .venv/
+          venv/
+          env/
+          .env
+          .env.*
+          !.env.example
+
+          # IDE / OS
+          .vscode/
+          .idea/
+          .DS_Store
+          Thumbs.db
+
+          # ML weights and generated artifacts
+          *.pt
+          *.pth
+          *.onnx
+          *.h5
+          *.pkl
+          *.joblib
+          runs/
+          wandb/
+          mlruns/
+          .cache/
+          faiss_index/
+          faiss_url_map.json
+          vectorstore/
+          .chroma/
+
+          # Logs / temporary uploads
+          *.log
+          temp_upload_*
+          EOF
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No restructuring changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "refactor: clean project structure"
+          git push
