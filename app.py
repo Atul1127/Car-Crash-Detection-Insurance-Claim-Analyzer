@@ -4,14 +4,14 @@ from pathlib import Path
 import chainlit as cl
 from PIL import Image
 
-from claimvision.claim.pipeline import ClaimDocumentPipeline
-from claimvision.decision.pipeline import ClaimDecisionPipeline
-from claimvision.pipeline import ClaimVisionPipeline
-from claimvision.rag.context import format_context
-from claimvision.rag.pipeline import PolicyRAGPipeline
-from claimvision.schemas import ClaimInformation
-from claimvision.vision.detector import DamageDetector
-from claimvision.vision.severity import SeverityEstimator
+from car_crash_claim_analyzer.claim.pipeline import ClaimDocumentPipeline
+from car_crash_claim_analyzer.decision.pipeline import ClaimDecisionPipeline
+from car_crash_claim_analyzer.pipeline import CarCrashClaimAnalyzerPipeline
+from car_crash_claim_analyzer.rag.context import format_context
+from car_crash_claim_analyzer.rag.pipeline import PolicyRAGPipeline
+from car_crash_claim_analyzer.schemas import ClaimInformation
+from car_crash_claim_analyzer.vision.detector import DamageDetector
+from car_crash_claim_analyzer.vision.severity import SeverityEstimator
 from config import (
     FAISS_INDEX_PATH,
     LOCAL_EMBED_MODEL,
@@ -42,7 +42,7 @@ def resolve_weights() -> Path:
 # ── Application modules ───────────────────────────────────────────────────────
 detector = DamageDetector(resolve_weights())
 severity_estimator = SeverityEstimator()
-vision_pipeline = ClaimVisionPipeline()
+vision_pipeline = CarCrashClaimAnalyzerPipeline()
 claim_pipeline = ClaimDocumentPipeline()
 decision_pipeline = ClaimDecisionPipeline()
 

@@ -1,8 +1,8 @@
 """End-to-end decision orchestration."""
 
-from claimvision.decision.engine import ClaimDecisionEngine
-from claimvision.decision.report import ClaimReportBuilder
-from claimvision.schemas import ClaimDecision, ClaimInformation, DamageAssessment, PolicyEvidence
+from car_crash_claim_analyzer.decision.engine import ClaimDecisionEngine
+from car_crash_claim_analyzer.decision.report import ClaimReportBuilder
+from car_crash_claim_analyzer.schemas import ClaimDecision, ClaimInformation, DamageAssessment, PolicyEvidence
 
 
 class ClaimDecisionPipeline:

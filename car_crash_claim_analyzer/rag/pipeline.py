@@ -4,13 +4,13 @@ import hashlib
 import json
 from pathlib import Path
 
-from claimvision.rag.chunking import PolicyChunker
-from claimvision.rag.context import diversify_documents, documents_to_evidence
-from claimvision.rag.document import PolicyDocumentLoader
-from claimvision.rag.query import QueryExpander, QueryNormalizer
-from claimvision.rag.reranker import ContextCompressor, EvidenceReranker
-from claimvision.rag.retriever import HybridPolicyRetriever
-from claimvision.schemas import PolicyEvidence
+from car_crash_claim_analyzer.rag.chunking import PolicyChunker
+from car_crash_claim_analyzer.rag.context import diversify_documents, documents_to_evidence
+from car_crash_claim_analyzer.rag.document import PolicyDocumentLoader
+from car_crash_claim_analyzer.rag.query import QueryExpander, QueryNormalizer
+from car_crash_claim_analyzer.rag.reranker import ContextCompressor, EvidenceReranker
+from car_crash_claim_analyzer.rag.retriever import HybridPolicyRetriever
+from car_crash_claim_analyzer.schemas import PolicyEvidence
 
 
 class PolicyRAGPipeline:

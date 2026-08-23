@@ -4,7 +4,7 @@ This layer does not invent policy coverage. It combines structured visual/claim
 signals with explicitly retrieved policy evidence and reports uncertainty.
 """
 
-from claimvision.schemas import ClaimDecision, ClaimInformation, DamageAssessment, PolicyEvidence
+from car_crash_claim_analyzer.schemas import ClaimDecision, ClaimInformation, DamageAssessment, PolicyEvidence
 
 
 class ClaimDecisionEngine:

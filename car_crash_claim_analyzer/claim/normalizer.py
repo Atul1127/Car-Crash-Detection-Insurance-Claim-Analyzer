@@ -2,7 +2,7 @@
 
 import re
 
-from claimvision.schemas import ClaimInformation
+from car_crash_claim_analyzer.schemas import ClaimInformation
 
 
 class ClaimNormalizer:

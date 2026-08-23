@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ultralytics import YOLO
 
-from claimvision.schemas import DamageAssessment, DamageDetection
+from car_crash_claim_analyzer.schemas import DamageAssessment, DamageDetection
 from config import YOLO_CONFIDENCE, YOLO_IOU, YOLO_DEVICE
 
 

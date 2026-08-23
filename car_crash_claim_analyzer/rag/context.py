@@ -1,6 +1,6 @@
 """Context assembly for downstream claim reasoning."""
 
-from claimvision.schemas import PolicyEvidence
+from car_crash_claim_analyzer.schemas import PolicyEvidence
 from langchain_core.documents import Document
 
 

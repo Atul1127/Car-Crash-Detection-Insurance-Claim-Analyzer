@@ -2,11 +2,11 @@
 
 from pathlib import Path
 
-from claimvision.claim.extractor import ClaimInformationExtractor
-from claimvision.claim.normalizer import ClaimNormalizer
-from claimvision.claim.ocr import OCRExtractor
-from claimvision.claim.validator import ClaimValidator
-from claimvision.schemas import ClaimInformation
+from car_crash_claim_analyzer.claim.extractor import ClaimInformationExtractor
+from car_crash_claim_analyzer.claim.normalizer import ClaimNormalizer
+from car_crash_claim_analyzer.claim.ocr import OCRExtractor
+from car_crash_claim_analyzer.claim.validator import ClaimValidator
+from car_crash_claim_analyzer.schemas import ClaimInformation
 
 
 class ClaimDocumentPipeline:

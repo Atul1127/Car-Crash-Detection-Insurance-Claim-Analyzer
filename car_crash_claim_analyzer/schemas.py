@@ -1,4 +1,4 @@
-"""Typed data contracts shared across the ClaimVision pipeline."""
+"""Typed data contracts shared across the Car Crash Claim Analyzer pipeline."""
 
 from dataclasses import dataclass, field
 from typing import Any
