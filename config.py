@@ -27,8 +27,9 @@ YOLO_IOU = float(os.getenv("YOLO_IOU", "0.45"))
 YOLO_DEVICE = os.getenv("YOLO_DEVICE", "auto")
 
 # Image quality gate
+# 224px permits common web images while still rejecting genuinely tiny inputs.
 IMAGE_MIN_WIDTH = int(os.getenv("IMAGE_MIN_WIDTH", "320"))
-IMAGE_MIN_HEIGHT = int(os.getenv("IMAGE_MIN_HEIGHT", "240"))
+IMAGE_MIN_HEIGHT = int(os.getenv("IMAGE_MIN_HEIGHT", "224"))
 IMAGE_MIN_BRIGHTNESS = float(os.getenv("IMAGE_MIN_BRIGHTNESS", "8.0"))
 
 # Retrieval
