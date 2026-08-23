@@ -96,6 +96,7 @@ async def main(message: cl.Message):
     claim_info = cl.user_session.get("claim_info") or ClaimInformation()
     detected_damages: list[str] = []
     severity = None
+    message_query = message.content
 
     # ── Vehicle image ─────────────────────────────────────────────────────────
     if message.elements:
@@ -116,12 +117,20 @@ async def main(message: cl.Message):
                 ).send()
                 continue
 
-            report.damage = severity_estimator.estimate(report.damage)
+            # Severity requires the original image dimensions for bounding-box area.
+            with Image.open(element.path) as source_image:
+                image_width, image_height = source_image.size
+            report.damage = severity_estimator.estimate(
+                report.damage,
+                image_width=image_width,
+                image_height=image_height,
+            )
             damage_report = report
             cl.user_session.set("damage_report", report)
             detected_damages = [d.label for d in report.damage.detections]
             severity = report.damage.severity
 
+            # Render annotated detections for the UI.
             results = detector.model.predict(
                 source=element.path,
                 conf=detector.confidence,
@@ -155,16 +164,11 @@ async def main(message: cl.Message):
                 elements=[cl_image],
             ).send()
 
-            # Auto-create a policy question from detected damage.
             if detected_damages:
                 message_query = (
                     f"Does the policy cover vehicle damage involving {', '.join(sorted(set(detected_damages)))}? "
                     f"The estimated severity is {severity}. What conditions, exclusions, depreciation, and limitations apply?"
                 )
-            else:
-                message_query = message.content
-    else:
-        message_query = message.content
 
     # ── Claim document ────────────────────────────────────────────────────────
     if message.elements:
@@ -173,7 +177,10 @@ async def main(message: cl.Message):
                 continue
             if not getattr(element, "path", None):
                 continue
-            if not any(str(element.mime).lower().endswith(ext) for ext in ("pdf", "jpeg", "jpg", "png", "tiff", "webp")):
+            if not any(
+                str(element.mime).lower().endswith(ext)
+                for ext in ("pdf", "jpeg", "jpg", "png", "tiff", "webp")
+            ):
                 continue
 
             await cl.Message(content="📄 Extracting claim information with OCR...").send()
@@ -231,7 +238,7 @@ async def main(message: cl.Message):
 
     # ── Structured decision ───────────────────────────────────────────────────
     if damage_report and damage_report.damage:
-        decision, report_text = decision_pipeline.run(
+        decision, _ = decision_pipeline.run(
             damage_report.damage,
             claim_info,
             evidence,
