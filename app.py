@@ -70,6 +70,8 @@ STRICT EVIDENCE RULES:
 5. Never infer coverage merely because a word such as 'covered' or 'coverage' appears in a retrieved passage.
 6. Never treat a monetary amount in a retrieved passage as a claim limit unless the passage explicitly states that it applies to this claim and this type of loss.
 7. Preserve the exact meaning and scope of policy conditions. If a condition applies to a different section, liability type, vehicle use, or scenario, do not apply it to own-damage coverage.
+8. Do NOT conclude that coverage is absent merely because the retrieved evidence does not name the damaged component (for example, a headlamp). Vehicle policies may define coverage at a broader vehicle/loss level. Only conclude that coverage is not established when the supplied evidence does not establish an applicable coverage provision.
+9. Distinguish between 'not mentioned in the retrieved evidence' and 'excluded by the policy'. The latter requires an explicit applicable exclusion.
 
 IMPORTANT VISION SEMANTICS:
 - A YOLO damage label is a DAMAGE CATEGORY, not a vehicle category.
@@ -193,9 +195,14 @@ async def main(message: cl.Message):
             ).send()
 
             if detected_damages:
+                damage_terms = ", ".join(sorted(set(detected_damages)))
                 message_query = (
-                    f"Does the policy cover vehicle damage involving {', '.join(sorted(set(detected_damages)))}? "
-                    f"The estimated severity is {report.damage.severity}. What conditions, exclusions, depreciation, and limitations apply?"
+                    "For a private motor insurance claim involving accidental damage to the insured vehicle "
+                    f"(detected damage category: {damage_terms}; severity: {report.damage.severity}), "
+                    "retrieve the policy provisions that establish the applicable vehicle/own-damage coverage, "
+                    "conditions, exclusions, depreciation, deductibles/excess, repair limitations, and relevant "
+                    "claim requirements. Do not require the policy to name the individual damaged component. "
+                    "Prioritize clauses that actually apply to accidental physical damage to the insured vehicle."
                 )
 
     # ── Claim document ────────────────────────────────────────────────────────
