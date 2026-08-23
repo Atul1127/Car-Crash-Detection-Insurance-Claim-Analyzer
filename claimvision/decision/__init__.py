@@ -1,0 +1,1 @@
+"""Structured claim decision components."""
