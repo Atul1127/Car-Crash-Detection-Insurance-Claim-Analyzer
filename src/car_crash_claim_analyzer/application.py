@@ -5,6 +5,7 @@ from pathlib import Path
 from PIL import Image
 from langchain_community.llms import Ollama
 from langchain_core.prompts import ChatPromptTemplate
+from ultralytics import YOLO
 
 from car_crash_claim_analyzer.claim.pipeline import ClaimDocumentPipeline
 from car_crash_claim_analyzer.decision.pipeline import ClaimDecisionPipeline
@@ -22,6 +23,18 @@ from config import (
     RETRIEVAL_K,
     YOLO_MODEL_PATH,
 )
+
+
+EXPECTED_DAMAGE_CLASSES = {
+    "bumper_dent",
+    "bumper_scratch",
+    "door_dent",
+    "door_scratch",
+    "glass_shatter",
+    "head_lamp",
+    "tail_lamp",
+    "unknown",
+}
 
 
 class ClaimAnalysisApplication:
@@ -44,17 +57,39 @@ class ClaimAnalysisApplication:
 
     @staticmethod
     def _resolve_weights() -> Path:
+        """Find the trained damage model and reject unrelated YOLO weights.
+
+        A generic YOLO model can still load successfully and produce boxes, but
+        it is not valid for this application. We therefore validate its class
+        names before selecting the weights file.
+        """
         configured = Path(YOLO_MODEL_PATH)
-        if configured.exists():
-            return configured
-        for candidate in (
+        candidates = [
+            configured,
             Path("runs/detect/train-3/weights") / configured.name,
             Path("runs/detect/train/weights") / configured.name,
-        ):
-            if candidate.exists():
-                return candidate
+        ]
+
+        checked: list[str] = []
+        for candidate in candidates:
+            if not candidate.exists() or candidate in candidates[: candidates.index(candidate)]:
+                continue
+            try:
+                model = YOLO(str(candidate))
+                names = model.names
+                normalized = {str(value).strip().lower() for value in names.values()}
+                checked.append(f"{candidate}: {sorted(normalized)}")
+                if EXPECTED_DAMAGE_CLASSES.issubset(normalized):
+                    return candidate
+            except Exception as exc:
+                checked.append(f"{candidate}: load failed ({exc})")
+
+        details = "\n".join(checked)
         raise FileNotFoundError(
-            f"YOLO weights not found: {YOLO_MODEL_PATH}. Configure YOLO_MODEL_PATH."
+            "No compatible trained car-damage YOLO weights were found. "
+            "Expected the 8 damage classes from data/damage_dataset.yaml. "
+            "Do not use a generic/object-detection best.pt.\n"
+            f"Checked:\n{details}"
         )
 
     @staticmethod
