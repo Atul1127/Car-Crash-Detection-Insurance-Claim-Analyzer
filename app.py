@@ -17,7 +17,6 @@ from config import (
     MODEL_NAME,
     POLICY_DOCUMENT_PATH,
     RETRIEVAL_K,
-    YOLO_DEVICE,
     YOLO_MODEL_PATH,
 )
 from langchain_community.llms import Ollama
@@ -78,7 +77,6 @@ coverage, exclusions, or financial values."""
 
 @cl.on_chat_start
 async def start():
-    cl.user_session.set("history", [])
     cl.user_session.set("claim_info", ClaimInformation())
     cl.user_session.set("damage_report", None)
     await cl.Message(
@@ -95,8 +93,7 @@ async def main(message: cl.Message):
     damage_report = cl.user_session.get("damage_report")
     claim_info = cl.user_session.get("claim_info") or ClaimInformation()
     detected_damages: list[str] = []
-    severity = None
-    message_query = message.content
+    message_query = message.content or ""
 
     # ── Vehicle image ─────────────────────────────────────────────────────────
     if message.elements:
@@ -117,9 +114,9 @@ async def main(message: cl.Message):
                 ).send()
                 continue
 
-            # Severity requires the original image dimensions for bounding-box area.
             with Image.open(element.path) as source_image:
                 image_width, image_height = source_image.size
+
             report.damage = severity_estimator.estimate(
                 report.damage,
                 image_width=image_width,
@@ -128,54 +125,53 @@ async def main(message: cl.Message):
             damage_report = report
             cl.user_session.set("damage_report", report)
             detected_damages = [d.label for d in report.damage.detections]
-            severity = report.damage.severity
 
-            # Render annotated detections for the UI.
-            results = detector.model.predict(
-                source=element.path,
-                conf=detector.confidence,
-                iou=detector.iou,
-                save=False,
-                device=YOLO_DEVICE,
-            )
-            output_image = Image.fromarray(results[0].plot()[..., ::-1])
-            buffer = io.BytesIO()
-            output_image.save(buffer, format="JPEG")
-            buffer.seek(0)
-            cl_image = cl.Image(
-                content=buffer.read(),
-                name="damage_assessment.jpg",
-                display="inline",
-                size="large",
-            )
+            # Reuse the exact YOLO result already produced by vision_pipeline.
+            try:
+                annotated = detector.render_last_result()
+                output_image = Image.fromarray(annotated[..., ::-1])
+                buffer = io.BytesIO()
+                output_image.save(buffer, format="JPEG", quality=90)
+                buffer.seek(0)
+                cl_image = cl.Image(
+                    content=buffer.getvalue(),
+                    name="damage_assessment.jpg",
+                    display="inline",
+                    size="large",
+                )
+                image_elements = [cl_image]
+            except Exception as exc:
+                # Rendering is optional; never fail the analytical pipeline because
+                # an annotated preview cannot be constructed.
+                image_elements = []
+                await cl.Message(content=f"⚠️ Bounding-box preview unavailable: `{exc}`").send()
 
             damage_lines = [
                 f"- **{d.label}** — confidence `{d.confidence:.2f}`"
                 for d in report.damage.detections
             ] or ["- No trained damage class detected"]
+
             await cl.Message(
                 content=(
                     "✅ **Visual Analysis Complete**\n\n"
                     f"**Damage:**\n{'\n'.join(damage_lines)}\n\n"
-                    f"**Severity:** `{severity or 'unknown'}`\n"
+                    f"**Severity:** `{report.damage.severity or 'unknown'}`\n"
                     f"**Severity score:** `{report.damage.severity_score or 0:.2f}`\n"
                     f"**Image quality:** `{report.image_quality.score:.2f}`"
                 ),
-                elements=[cl_image],
+                elements=image_elements,
             ).send()
 
             if detected_damages:
                 message_query = (
                     f"Does the policy cover vehicle damage involving {', '.join(sorted(set(detected_damages)))}? "
-                    f"The estimated severity is {severity}. What conditions, exclusions, depreciation, and limitations apply?"
+                    f"The estimated severity is {report.damage.severity}. What conditions, exclusions, depreciation, and limitations apply?"
                 )
 
     # ── Claim document ────────────────────────────────────────────────────────
     if message.elements:
         for element in message.elements:
-            if "image" in element.mime:
-                continue
-            if not getattr(element, "path", None):
+            if "image" in element.mime or not getattr(element, "path", None):
                 continue
             if not any(
                 str(element.mime).lower().endswith(ext)
@@ -205,7 +201,7 @@ async def main(message: cl.Message):
             except Exception as exc:
                 await cl.Message(content=f"❌ OCR processing failed: `{exc}`").send()
 
-    if not message_query or not message_query.strip():
+    if not message_query.strip():
         return
 
     # ── Advanced policy evidence ──────────────────────────────────────────────
