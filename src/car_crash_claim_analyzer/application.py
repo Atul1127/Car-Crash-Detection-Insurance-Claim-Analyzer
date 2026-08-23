@@ -57,12 +57,7 @@ class ClaimAnalysisApplication:
 
     @staticmethod
     def _resolve_weights() -> Path:
-        """Find the trained damage model and reject unrelated YOLO weights.
-
-        A generic YOLO model can still load successfully and produce boxes, but
-        it is not valid for this application. We therefore validate its class
-        names before selecting the weights file.
-        """
+        """Find the trained damage model and reject unrelated YOLO weights."""
         configured = Path(YOLO_MODEL_PATH)
         candidates = [
             configured,
@@ -101,18 +96,19 @@ STRICT EVIDENCE RULES:
 1. Use ONLY the supplied policy evidence and structured claim/vehicle evidence.
 2. Never invent policy clauses, coverage, exclusions, limits, amounts, dates, or conditions.
 3. A retrieved policy passage is evidence, not proof that the passage applies to this claim. Check its wording and applicability before drawing a conclusion.
-4. If the evidence does not establish coverage or an exclusion, say exactly: 'Coverage is not established from the retrieved evidence.' Recommend manual review.
-5. Never infer coverage merely because a word such as 'covered' or 'coverage' appears in a retrieved passage.
-6. Never treat a monetary amount in a retrieved passage as a claim limit unless the passage explicitly states that it applies to this claim and this type of loss.
-7. Preserve the exact meaning and scope of policy conditions. If a condition applies to a different section, liability type, vehicle use, or scenario, do not apply it to own-damage coverage.
-8. Do NOT conclude that coverage is absent merely because the retrieved evidence does not name the damaged component (for example, a headlamp). Vehicle policies may define coverage at a broader vehicle/loss level. Only conclude that coverage is not established when the supplied evidence does not establish an applicable coverage provision.
+4. If the supplied evidence does not contain an explicit applicable coverage provision, say exactly: 'Coverage is not established from the retrieved evidence.' Recommend manual review.
+5. Never infer coverage merely because words such as 'covered', 'coverage', 'insured', or 'policy' appear in a retrieved passage.
+6. Never infer an exclusion merely because the word 'excluded' or 'exclusion' appears. The exclusion must apply to the detected loss/component and scenario.
+7. Never treat a monetary amount in a retrieved passage as a claim limit unless the passage explicitly states that it applies to this claim and this type of loss.
+8. Preserve the exact meaning and scope of policy conditions. If a condition applies to a different section, liability type, vehicle use, or scenario, do not apply it to own-damage coverage.
 9. Distinguish between 'not mentioned in the retrieved evidence' and 'excluded by the policy'. The latter requires an explicit applicable exclusion.
+10. The deterministic decision engine is the source of truth for the structured coverage status. Your explanation must not contradict it.
 
 IMPORTANT VISION SEMANTICS:
 - A YOLO damage label is a DAMAGE CATEGORY, not a vehicle category.
-- The label 'unknown' means only that the detector did not map the detected damage to a known damage category.
-- NEVER interpret 'unknown' as 'unknown vehicle', 'unknown vehicle class', 'uninsured vehicle', or any other vehicle/policy classification.
-- Do not invent a specific damage type when the detector says 'unknown'. Describe it only as detected vehicle damage with the supplied confidence and severity.
+- 'unknown', 'unclassified_damage', and 'other' mean only that the detector did not map the detected damage to a supported damage category.
+- NEVER interpret these labels as 'unknown vehicle', 'unknown vehicle class', 'uninsured vehicle', or any other vehicle/policy classification.
+- Do not invent a specific damage type when the detector returns an unknown/unclassified label. Describe it only as detected vehicle damage with the supplied confidence and severity.
 
 OUTPUT RULES:
 - Separate facts directly supported by evidence from interpretation.
