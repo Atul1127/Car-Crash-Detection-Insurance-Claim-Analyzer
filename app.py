@@ -5,85 +5,70 @@ import chainlit as cl
 from PIL import Image
 
 from claimvision.pipeline import ClaimVisionPipeline
+from claimvision.rag.context import format_context
+from claimvision.rag.pipeline import PolicyRAGPipeline
 from claimvision.vision.detector import DamageDetector
 from claimvision.vision.severity import SeverityEstimator
 from config import (
-    FAISS_INDEX_PATH,
     LOCAL_EMBED_MODEL,
     MODEL_NAME,
+    POLICY_DOCUMENT_PATH,
     RETRIEVAL_K,
     YOLO_DEVICE,
     YOLO_MODEL_PATH,
 )
-
-# Existing policy RAG dependencies remain in the application layer for now.
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import FAISS
 from langchain_community.llms import Ollama
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.output_parsers import StrOutputParser
 
-
-# ── ClaimVision CV pipeline ───────────────────────────────────────────────────
 
 def resolve_weights() -> Path:
     configured = Path(YOLO_MODEL_PATH)
     if configured.exists():
         return configured
-
-    candidates = [
+    for candidate in (
         Path("runs/detect/train-3/weights") / configured.name,
         Path("runs/detect/train/weights") / configured.name,
-    ]
-    for candidate in candidates:
+    ):
         if candidate.exists():
             return candidate
-
     raise FileNotFoundError(
-        f"YOLO weights not found: {YOLO_MODEL_PATH}. "
-        "Place the model in the project root or configure YOLO_MODEL_PATH."
+        f"YOLO weights not found: {YOLO_MODEL_PATH}. Configure YOLO_MODEL_PATH."
     )
 
 
-weights_path = resolve_weights()
-detector = DamageDetector(weights_path)
+# ── ClaimVision computer vision ───────────────────────────────────────────────
+detector = DamageDetector(resolve_weights())
 severity_estimator = SeverityEstimator()
-pipeline = ClaimVisionPipeline()
+vision_pipeline = ClaimVisionPipeline()
 
 
-# ── Existing policy RAG ───────────────────────────────────────────────────────
-embedding_model = HuggingFaceEmbeddings(
-    model_name=LOCAL_EMBED_MODEL,
-    model_kwargs={"device": "cpu"},
+# ── Advanced policy RAG ───────────────────────────────────────────────────────
+policy_rag = PolicyRAGPipeline(
+    embedding_model=LOCAL_EMBED_MODEL,
+    top_k=RETRIEVAL_K,
 )
-vector_db = FAISS.load_local(
-    FAISS_INDEX_PATH,
-    embedding_model,
-    allow_dangerous_deserialization=True,
-)
-retriever = vector_db.as_retriever(search_kwargs={"k": RETRIEVAL_K})
+policy_rag.build(POLICY_DOCUMENT_PATH)
 llm = Ollama(model=MODEL_NAME)
 
-prompt_template = """
-You are an expert insurance claim adjuster AI. Analyze the vehicle damage against
-only the policy clauses provided below.
+prompt = ChatPromptTemplate.from_template(
+    """You are an expert insurance claim analysis assistant.
 
-Policy Context:
+Use ONLY the supplied policy evidence. If the evidence does not establish an
+answer, explicitly say that the policy evidence is insufficient.
+
+Policy evidence:
 {context}
 
-Question:
+Claim question:
 {question}
 
-Return a professional assessment covering coverage, limitations, and relevant
-policy conditions. Do not invent policy clauses.
-"""
-prompt = ChatPromptTemplate.from_template(prompt_template)
-rag_chain = (
-    {"context": retriever, "question": RunnablePassthrough()}
-    | prompt
-    | llm
-    | StrOutputParser()
+Return:
+1. Coverage assessment
+2. Relevant limitations/exclusions
+3. Depreciation or conditions if present
+4. Evidence references using the supplied source/page information
+
+Do not invent policy clauses or financial values."""
 )
 
 
@@ -93,8 +78,9 @@ async def start():
     await cl.Message(
         content=(
             "🚗 **Car Crash Detection & Insurance Claim Analyzer**\n\n"
-            "Upload a vehicle image to run the ClaimVision computer-vision pipeline.\n\n"
-            "**Pipeline:** Image Quality → YOLOv8 → Damage Classification → Severity → Policy RAG"
+            "Upload a vehicle image to run:\n"
+            "**Image Quality → YOLOv8 → Damage → Severity → Hybrid Policy RAG**\n\n"
+            "You can also ask policy questions directly."
         )
     ).send()
 
@@ -102,39 +88,39 @@ async def start():
 @cl.on_message
 async def main(message: cl.Message):
     detected_damages: list[str] = []
+    severity = None
 
     if message.elements:
         for element in message.elements:
             if "image" not in element.mime:
                 continue
 
-            await cl.Message(content="🔍 Running image-quality and damage analysis...").send()
+            await cl.Message(content="🔍 Running ClaimVision image analysis...").send()
+            report = vision_pipeline.run(element.path, detector=detector)
 
-            report = pipeline.run(element.path, detector=detector)
             if not report.image_quality.valid:
                 reasons = "\n".join(f"- {reason}" for reason in report.image_quality.reasons)
                 await cl.Message(
                     content=(
                         "❌ **Image rejected by quality gate**\n\n"
-                        f"{reasons}\n\n"
-                        f"Quality score: **{report.image_quality.score:.2f}**"
+                        f"{reasons}\n\nQuality score: **{report.image_quality.score:.2f}**"
                     )
                 ).send()
                 continue
 
             report.damage = severity_estimator.estimate(report.damage)
             detected_damages = [d.label for d in report.damage.detections]
+            severity = report.damage.severity
 
-            # Render YOLO boxes using the same model that generated the structured output.
             results = detector.model.predict(
                 source=element.path,
                 conf=detector.confidence,
+                iou=detector.iou,
                 save=False,
                 device=YOLO_DEVICE,
             )
             result = results[0]
-            im_array = result.plot()
-            output_image = Image.fromarray(im_array[..., ::-1])
+            output_image = Image.fromarray(result.plot()[..., ::-1])
             buffer = io.BytesIO()
             output_image.save(buffer, format="JPEG")
             buffer.seek(0)
@@ -147,42 +133,48 @@ async def main(message: cl.Message):
             )
 
             if detected_damages:
-                rows = []
-                for detection in report.damage.detections:
-                    rows.append(
-                        f"- **{detection.label}** — confidence `{detection.confidence:.2f}`"
-                    )
-                damage_text = "\n".join(rows)
+                damage_lines = [
+                    f"- **{d.label}** — confidence `{d.confidence:.2f}`"
+                    for d in report.damage.detections
+                ]
                 summary = (
                     "✅ **Visual Analysis Complete**\n\n"
-                    f"**Detected damage:**\n{damage_text}\n\n"
-                    f"**Severity:** `{report.damage.severity}`\n"
+                    f"**Damage:**\n{'\n'.join(damage_lines)}\n\n"
+                    f"**Severity:** `{severity}`\n"
                     f"**Severity score:** `{report.damage.severity_score:.2f}`\n"
                     f"**Image quality:** `{report.image_quality.score:.2f}`"
                 )
             else:
-                summary = (
-                    "ℹ️ **No trained damage class detected.**\n\n"
-                    f"Image quality score: `{report.image_quality.score:.2f}`"
-                )
+                summary = "ℹ️ No trained damage class was detected."
 
             await cl.Message(content=summary, elements=[cl_image]).send()
 
-    # Preserve text-only policy questions and automatically query policy for CV hits.
+    # ── Hybrid policy retrieval ───────────────────────────────────────────────
     if detected_damages:
         damage_list = ", ".join(sorted(set(detected_damages)))
         rag_query = (
-            f"Does the policy cover accidental vehicle damage involving {damage_list}? "
-            "What coverage conditions, exclusions, depreciation, or limitations apply?"
+            f"Does the policy cover vehicle damage involving {damage_list}? "
+            f"The estimated damage severity is {severity}. "
+            "What coverage conditions, exclusions, depreciation, and limitations apply?"
         )
-        await cl.Message(
-            content=f"📑 **Policy RAG:** retrieving clauses for `{damage_list}`..."
-        ).send()
     else:
         rag_query = message.content
 
-    if rag_query and rag_query.strip():
-        response = await rag_chain.ainvoke(rag_query)
-        await cl.Message(
-            content=f"🤖 **Policy Assessment**\n\n{response}"
-        ).send()
+    if not rag_query or not rag_query.strip():
+        return
+
+    await cl.Message(content="📑 **Hybrid Policy RAG:** retrieving and reranking evidence...").send()
+    evidence = policy_rag.retrieve(rag_query)
+    context = format_context(evidence)
+    response = await llm.ainvoke(prompt.format(context=context, question=rag_query))
+
+    evidence_refs = "\n".join(
+        f"- {item.source or 'policy'} — page {item.page if item.page is not None else 'N/A'}"
+        for item in evidence
+    )
+    await cl.Message(
+        content=(
+            f"🤖 **Policy Assessment**\n\n{response}\n\n"
+            f"**Evidence used:**\n{evidence_refs}"
+        )
+    ).send()
