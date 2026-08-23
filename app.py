@@ -60,10 +60,30 @@ policy_rag.build(POLICY_DOCUMENT_PATH)
 llm = Ollama(model=MODEL_NAME)
 
 prompt = ChatPromptTemplate.from_template(
-    """You are an expert insurance claim analysis assistant.
+    """You are an expert insurance claim analysis assistant. Your job is to summarize and interpret ONLY the evidence supplied below.
 
-Use ONLY the supplied policy evidence and structured claim/vehicle evidence.
-If evidence is insufficient, explicitly say so.
+STRICT EVIDENCE RULES:
+1. Use ONLY the supplied policy evidence and structured claim/vehicle evidence.
+2. Never invent policy clauses, coverage, exclusions, limits, amounts, dates, or conditions.
+3. A retrieved policy passage is evidence, not proof that the passage applies to this claim. Check its wording and applicability before drawing a conclusion.
+4. If the evidence does not establish coverage or an exclusion, say exactly: 'Coverage is not established from the retrieved evidence.' Recommend manual review.
+5. Never infer coverage merely because a word such as 'covered' or 'coverage' appears in a retrieved passage.
+6. Never treat a monetary amount in a retrieved passage as a claim limit unless the passage explicitly states that it applies to this claim and this type of loss.
+7. Preserve the exact meaning and scope of policy conditions. If a condition applies to a different section, liability type, vehicle use, or scenario, do not apply it to own-damage coverage.
+
+IMPORTANT VISION SEMANTICS:
+- A YOLO damage label is a DAMAGE CATEGORY, not a vehicle category.
+- The label 'unknown' means only that the detector did not map the detected damage to a known damage category.
+- NEVER interpret 'unknown' as 'unknown vehicle', 'unknown vehicle class', 'uninsured vehicle', or any other vehicle/policy classification.
+- Do not invent a specific damage type when the detector says 'unknown'. Describe it only as detected vehicle damage with the supplied confidence and severity.
+
+OUTPUT RULES:
+- Separate facts directly supported by evidence from interpretation.
+- Cite policy evidence by source/page when discussing a specific clause.
+- For every important coverage/exclusion statement, explain which supplied evidence supports it.
+- If evidence conflicts or is insufficient, state that clearly.
+- Do not manufacture repair costs or financial values.
+- Keep the assessment concise and suitable for an insurance claims reviewer.
 
 Vehicle evidence:
 {vehicle_evidence}
@@ -77,8 +97,12 @@ Policy evidence:
 Question:
 {question}
 
-Return a concise, evidence-grounded assessment. Never invent policy clauses,
-coverage, exclusions, or financial values."""
+Return an evidence-grounded assessment with these sections:
+1. Findings
+2. Coverage assessment
+3. Conditions/exclusions actually supported by the evidence
+4. Uncertainty / manual-review reasons
+"""
 )
 
 
@@ -229,9 +253,10 @@ async def main(message: cl.Message):
     vehicle_evidence = "No vehicle analysis available."
     if damage_report and damage_report.damage:
         vehicle_evidence = (
-            f"Damage classes: {[d.label for d in damage_report.damage.detections]}; "
+            f"Detected damage labels: {[d.label for d in damage_report.damage.detections]}; "
             f"severity: {damage_report.damage.severity}; "
-            f"severity_score: {damage_report.damage.severity_score}"
+            f"severity_score: {damage_report.damage.severity_score}. "
+            "The labels describe detected damage categories only, not vehicle classes."
         )
 
     claim_text = (
