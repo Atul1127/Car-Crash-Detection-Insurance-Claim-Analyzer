@@ -22,23 +22,32 @@ class DamageDetector:
         self.iou = iou
         self.last_result = None
 
+    @staticmethod
+    def _resolve_device(device: str | int | None) -> str | int:
+        """Resolve auto to an actually available inference device."""
+        if device is None or str(device).lower() == "auto":
+            try:
+                import torch
+                return 0 if torch.cuda.is_available() else "cpu"
+            except Exception:
+                return "cpu"
+        return device
+
     def predict(self, image_path: str | Path, device: str | int | None = None) -> DamageAssessment:
-        inference_device = YOLO_DEVICE if device is None else device
+        inference_device = self._resolve_device(YOLO_DEVICE if device is None else device)
         results = self.model.predict(
             source=str(image_path),
             conf=self.confidence,
             iou=self.iou,
             save=False,
             device=inference_device,
+            verbose=False,
         )
         if not results:
             self.last_result = None
             return DamageAssessment(detections=[])
 
-        # Keep the result so the UI can render the same inference without
-        # running YOLO a second time.
         self.last_result = results[0]
-
         detections: list[DamageDetection] = []
         result = results[0]
         if result.boxes is None:
