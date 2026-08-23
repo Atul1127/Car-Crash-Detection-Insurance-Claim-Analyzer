@@ -13,6 +13,7 @@ from claimvision.schemas import ClaimInformation
 from claimvision.vision.detector import DamageDetector
 from claimvision.vision.severity import SeverityEstimator
 from config import (
+    FAISS_INDEX_PATH,
     LOCAL_EMBED_MODEL,
     MODEL_NAME,
     POLICY_DOCUMENT_PATH,
@@ -48,6 +49,7 @@ decision_pipeline = ClaimDecisionPipeline()
 policy_rag = PolicyRAGPipeline(
     embedding_model=LOCAL_EMBED_MODEL,
     top_k=RETRIEVAL_K,
+    index_path=FAISS_INDEX_PATH,
 )
 policy_rag.build(POLICY_DOCUMENT_PATH)
 llm = Ollama(model=MODEL_NAME)
@@ -126,7 +128,6 @@ async def main(message: cl.Message):
             cl.user_session.set("damage_report", report)
             detected_damages = [d.label for d in report.damage.detections]
 
-            # Reuse the exact YOLO result already produced by vision_pipeline.
             try:
                 annotated = detector.render_last_result()
                 output_image = Image.fromarray(annotated[..., ::-1])
@@ -141,8 +142,6 @@ async def main(message: cl.Message):
                 )
                 image_elements = [cl_image]
             except Exception as exc:
-                # Rendering is optional; never fail the analytical pipeline because
-                # an annotated preview cannot be constructed.
                 image_elements = []
                 await cl.Message(content=f"⚠️ Bounding-box preview unavailable: `{exc}`").send()
 
