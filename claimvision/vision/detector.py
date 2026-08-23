@@ -1,10 +1,11 @@
-"""YOLO damage detector adapter with portable device selection."""
+"""YOLO damage detector adapter."""
 
 from pathlib import Path
 
 from ultralytics import YOLO
 
 from claimvision.schemas import DamageAssessment, DamageDetection
+from config import YOLO_CONFIDENCE, YOLO_IOU, YOLO_DEVICE
 
 
 class DamageDetector:
@@ -13,35 +14,21 @@ class DamageDetector:
     def __init__(
         self,
         weights_path: str | Path,
-        confidence: float = 0.25,
-        iou: float = 0.45,
+        confidence: float = YOLO_CONFIDENCE,
+        iou: float = YOLO_IOU,
     ):
         self.model = YOLO(str(weights_path))
         self.confidence = confidence
         self.iou = iou
 
-    @staticmethod
-    def resolve_device(device: str | int = "auto") -> str | int:
-        if device != "auto":
-            return device
-        try:
-            import torch
-            return 0 if torch.cuda.is_available() else "cpu"
-        except ImportError:
-            return "cpu"
-
-    def predict(
-        self,
-        image_path: str | Path,
-        device: str | int = "auto",
-    ) -> DamageAssessment:
+    def predict(self, image_path: str | Path, device: str | int | None = None) -> DamageAssessment:
+        inference_device = YOLO_DEVICE if device is None else device
         results = self.model.predict(
             source=str(image_path),
             conf=self.confidence,
             iou=self.iou,
             save=False,
-            device=self.resolve_device(device),
-            verbose=False,
+            device=inference_device,
         )
 
         detections: list[DamageDetection] = []
@@ -50,11 +37,13 @@ class DamageDetector:
                 continue
             for box in result.boxes:
                 cls_id = int(box.cls[0])
+                confidence = float(box.conf[0])
+                coords = tuple(float(v) for v in box.xyxy[0].tolist())
                 detections.append(
                     DamageDetection(
                         label=str(self.model.names[cls_id]),
-                        confidence=float(box.conf[0]),
-                        bbox=tuple(float(v) for v in box.xyxy[0].tolist()),
+                        confidence=confidence,
+                        bbox=coords,  # type: ignore[arg-type]
                     )
                 )
 
