@@ -1,3 +1,4 @@
+import asyncio
 import io
 from pathlib import Path
 
@@ -108,7 +109,9 @@ async def main(message: cl.Message):
                 continue
 
             await cl.Message(content="🔍 Running image analysis...").send()
-            report = vision_pipeline.run(element.path, detector=detector)
+            report = await asyncio.to_thread(
+                vision_pipeline.run, element.path, detector=detector
+            )
 
             if not report.image_quality.valid:
                 reasons = "\n".join(f"- {reason}" for reason in report.image_quality.reasons)
@@ -184,7 +187,7 @@ async def main(message: cl.Message):
 
             await cl.Message(content="📄 Extracting claim information with OCR...").send()
             try:
-                claim_info, warnings = claim_pipeline.run(element.path)
+                claim_info, warnings = await asyncio.to_thread(claim_pipeline.run, element.path)
                 cl.user_session.set("claim_info", claim_info)
                 fields = [
                     f"- Policy number: `{claim_info.policy_number or 'missing'}`",
@@ -208,9 +211,20 @@ async def main(message: cl.Message):
         return
 
     # ── Policy evidence ──────────────────────────────────────────────────────
-    await cl.Message(content="📑 **Policy Retrieval:** retrieving and reranking evidence...").send()
-    evidence = policy_rag.retrieve(message_query)
-    policy_context = format_context(evidence)
+    status = cl.Message(content="📑 **Policy Retrieval:** retrieving and reranking evidence...")
+    await status.send()
+
+    try:
+        # FAISS + embedding inference is synchronous/CPU-heavy. Running it in a
+        # worker thread prevents Chainlit's async event loop from appearing frozen.
+        evidence = await asyncio.to_thread(policy_rag.retrieve, message_query)
+        policy_context = format_context(evidence)
+        status.content = f"✅ **Policy Retrieval Complete** — {len(evidence)} evidence chunks found."
+        await status.update()
+    except Exception as exc:
+        status.content = f"❌ **Policy Retrieval Failed:** `{type(exc).__name__}: {exc}`"
+        await status.update()
+        return
 
     vehicle_evidence = "No vehicle analysis available."
     if damage_report and damage_report.damage:
@@ -226,22 +240,37 @@ async def main(message: cl.Message):
         f"incident_date={claim_info.incident_date}"
     )
 
-    response = await llm.ainvoke(
-        prompt.format(
-            vehicle_evidence=vehicle_evidence,
-            claim_information=claim_text,
-            policy_context=policy_context,
-            question=message_query,
+    llm_status = cl.Message(content="🤖 **Claim Reasoning:** generating policy-grounded assessment...")
+    await llm_status.send()
+    try:
+        response = await llm.ainvoke(
+            prompt.format(
+                vehicle_evidence=vehicle_evidence,
+                claim_information=claim_text,
+                policy_context=policy_context,
+                question=message_query,
+            )
         )
-    )
+        llm_status.content = "✅ **Claim Reasoning Complete**"
+        await llm_status.update()
+    except Exception as exc:
+        llm_status.content = f"❌ **LLM Reasoning Failed:** `{type(exc).__name__}: {exc}`"
+        await llm_status.update()
+        return
 
     # ── Structured decision ───────────────────────────────────────────────────
     if damage_report and damage_report.damage:
-        decision, _ = decision_pipeline.run(
-            damage_report.damage,
-            claim_info,
-            evidence,
-        )
+        try:
+            decision, _ = await asyncio.to_thread(
+                decision_pipeline.run,
+                damage_report.damage,
+                claim_info,
+                evidence,
+            )
+        except Exception as exc:
+            await cl.Message(content=f"❌ Structured decision failed: `{type(exc).__name__}: {exc}`").send()
+            return
+
         evidence_refs = "\n".join(
             f"- {item.source or 'policy'} — page {item.page if item.page is not None else 'N/A'}"
             for item in evidence
@@ -258,5 +287,3 @@ async def main(message: cl.Message):
                 f"## Warnings\n{chr(10).join('- ' + w for w in decision.warnings) or '- None'}"
             )
         ).send()
-    else:
-        await cl.Message(content=f"🤖 **Policy Assessment**\n\n{response}").send()
