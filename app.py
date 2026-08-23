@@ -4,9 +4,12 @@ from pathlib import Path
 import chainlit as cl
 from PIL import Image
 
+from claimvision.claim.pipeline import ClaimDocumentPipeline
+from claimvision.decision.pipeline import ClaimDecisionPipeline
 from claimvision.pipeline import ClaimVisionPipeline
 from claimvision.rag.context import format_context
 from claimvision.rag.pipeline import PolicyRAGPipeline
+from claimvision.schemas import ClaimInformation
 from claimvision.vision.detector import DamageDetector
 from claimvision.vision.severity import SeverityEstimator
 from config import (
@@ -36,13 +39,13 @@ def resolve_weights() -> Path:
     )
 
 
-# ── ClaimVision computer vision ───────────────────────────────────────────────
+# ── ClaimVision modules ───────────────────────────────────────────────────────
 detector = DamageDetector(resolve_weights())
 severity_estimator = SeverityEstimator()
 vision_pipeline = ClaimVisionPipeline()
+claim_pipeline = ClaimDocumentPipeline()
+decision_pipeline = ClaimDecisionPipeline()
 
-
-# ── Advanced policy RAG ───────────────────────────────────────────────────────
 policy_rag = PolicyRAGPipeline(
     embedding_model=LOCAL_EMBED_MODEL,
     top_k=RETRIEVAL_K,
@@ -53,43 +56,48 @@ llm = Ollama(model=MODEL_NAME)
 prompt = ChatPromptTemplate.from_template(
     """You are an expert insurance claim analysis assistant.
 
-Use ONLY the supplied policy evidence. If the evidence does not establish an
-answer, explicitly say that the policy evidence is insufficient.
+Use ONLY the supplied policy evidence and structured claim/vehicle evidence.
+If evidence is insufficient, explicitly say so.
+
+Vehicle evidence:
+{vehicle_evidence}
+
+Claim information:
+{claim_information}
 
 Policy evidence:
-{context}
+{policy_context}
 
-Claim question:
+Question:
 {question}
 
-Return:
-1. Coverage assessment
-2. Relevant limitations/exclusions
-3. Depreciation or conditions if present
-4. Evidence references using the supplied source/page information
-
-Do not invent policy clauses or financial values."""
+Return a concise, evidence-grounded assessment. Never invent policy clauses,
+coverage, exclusions, or financial values."""
 )
 
 
 @cl.on_chat_start
 async def start():
     cl.user_session.set("history", [])
+    cl.user_session.set("claim_info", ClaimInformation())
+    cl.user_session.set("damage_report", None)
     await cl.Message(
         content=(
             "🚗 **Car Crash Detection & Insurance Claim Analyzer**\n\n"
-            "Upload a vehicle image to run:\n"
-            "**Image Quality → YOLOv8 → Damage → Severity → Hybrid Policy RAG**\n\n"
-            "You can also ask policy questions directly."
+            "Upload a vehicle image and optionally a claim document.\n\n"
+            "**Pipeline:** Image Quality → YOLOv8 → Damage → Severity → OCR/Claim Info → Hybrid Policy RAG → Decision Engine"
         )
     ).send()
 
 
 @cl.on_message
 async def main(message: cl.Message):
+    damage_report = cl.user_session.get("damage_report")
+    claim_info = cl.user_session.get("claim_info") or ClaimInformation()
     detected_damages: list[str] = []
     severity = None
 
+    # ── Vehicle image ─────────────────────────────────────────────────────────
     if message.elements:
         for element in message.elements:
             if "image" not in element.mime:
@@ -109,6 +117,8 @@ async def main(message: cl.Message):
                 continue
 
             report.damage = severity_estimator.estimate(report.damage)
+            damage_report = report
+            cl.user_session.set("damage_report", report)
             detected_damages = [d.label for d in report.damage.detections]
             severity = report.damage.severity
 
@@ -119,12 +129,10 @@ async def main(message: cl.Message):
                 save=False,
                 device=YOLO_DEVICE,
             )
-            result = results[0]
-            output_image = Image.fromarray(result.plot()[..., ::-1])
+            output_image = Image.fromarray(results[0].plot()[..., ::-1])
             buffer = io.BytesIO()
             output_image.save(buffer, format="JPEG")
             buffer.seek(0)
-
             cl_image = cl.Image(
                 content=buffer.read(),
                 name="damage_assessment.jpg",
@@ -132,49 +140,117 @@ async def main(message: cl.Message):
                 size="large",
             )
 
-            if detected_damages:
-                damage_lines = [
-                    f"- **{d.label}** — confidence `{d.confidence:.2f}`"
-                    for d in report.damage.detections
-                ]
-                summary = (
+            damage_lines = [
+                f"- **{d.label}** — confidence `{d.confidence:.2f}`"
+                for d in report.damage.detections
+            ] or ["- No trained damage class detected"]
+            await cl.Message(
+                content=(
                     "✅ **Visual Analysis Complete**\n\n"
                     f"**Damage:**\n{'\n'.join(damage_lines)}\n\n"
-                    f"**Severity:** `{severity}`\n"
-                    f"**Severity score:** `{report.damage.severity_score:.2f}`\n"
+                    f"**Severity:** `{severity or 'unknown'}`\n"
+                    f"**Severity score:** `{report.damage.severity_score or 0:.2f}`\n"
                     f"**Image quality:** `{report.image_quality.score:.2f}`"
+                ),
+                elements=[cl_image],
+            ).send()
+
+            # Auto-create a policy question from detected damage.
+            if detected_damages:
+                message_query = (
+                    f"Does the policy cover vehicle damage involving {', '.join(sorted(set(detected_damages)))}? "
+                    f"The estimated severity is {severity}. What conditions, exclusions, depreciation, and limitations apply?"
                 )
             else:
-                summary = "ℹ️ No trained damage class was detected."
-
-            await cl.Message(content=summary, elements=[cl_image]).send()
-
-    # ── Hybrid policy retrieval ───────────────────────────────────────────────
-    if detected_damages:
-        damage_list = ", ".join(sorted(set(detected_damages)))
-        rag_query = (
-            f"Does the policy cover vehicle damage involving {damage_list}? "
-            f"The estimated damage severity is {severity}. "
-            "What coverage conditions, exclusions, depreciation, and limitations apply?"
-        )
+                message_query = message.content
     else:
-        rag_query = message.content
+        message_query = message.content
 
-    if not rag_query or not rag_query.strip():
+    # ── Claim document ────────────────────────────────────────────────────────
+    if message.elements:
+        for element in message.elements:
+            if "image" in element.mime:
+                continue
+            if not getattr(element, "path", None):
+                continue
+            if not any(str(element.mime).lower().endswith(ext) for ext in ("pdf", "jpeg", "jpg", "png", "tiff", "webp")):
+                continue
+
+            await cl.Message(content="📄 Extracting claim information with OCR...").send()
+            try:
+                claim_info, warnings = claim_pipeline.run(element.path)
+                cl.user_session.set("claim_info", claim_info)
+                fields = [
+                    f"- Policy number: `{claim_info.policy_number or 'missing'}`",
+                    f"- Claim ID: `{claim_info.claim_id or 'missing'}`",
+                    f"- Claimant: `{claim_info.claimant_name or 'missing'}`",
+                    f"- Vehicle registration: `{claim_info.vehicle_registration or 'missing'}`",
+                    f"- Incident date: `{claim_info.incident_date or 'missing'}`",
+                ]
+                warning_text = "\n".join(f"- {w}" for w in warnings) or "- None"
+                await cl.Message(
+                    content=(
+                        "📋 **Claim Information Extracted**\n\n"
+                        + "\n".join(fields)
+                        + f"\n\n**Validation warnings:**\n{warning_text}"
+                    )
+                ).send()
+            except Exception as exc:
+                await cl.Message(content=f"❌ OCR processing failed: `{exc}`").send()
+
+    if not message_query or not message_query.strip():
         return
 
+    # ── Advanced policy evidence ──────────────────────────────────────────────
     await cl.Message(content="📑 **Hybrid Policy RAG:** retrieving and reranking evidence...").send()
-    evidence = policy_rag.retrieve(rag_query)
-    context = format_context(evidence)
-    response = await llm.ainvoke(prompt.format(context=context, question=rag_query))
+    evidence = policy_rag.retrieve(message_query)
+    policy_context = format_context(evidence)
 
-    evidence_refs = "\n".join(
-        f"- {item.source or 'policy'} — page {item.page if item.page is not None else 'N/A'}"
-        for item in evidence
-    )
-    await cl.Message(
-        content=(
-            f"🤖 **Policy Assessment**\n\n{response}\n\n"
-            f"**Evidence used:**\n{evidence_refs}"
+    vehicle_evidence = "No vehicle analysis available."
+    if damage_report and damage_report.damage:
+        vehicle_evidence = (
+            f"Damage classes: {[d.label for d in damage_report.damage.detections]}; "
+            f"severity: {damage_report.damage.severity}; "
+            f"severity_score: {damage_report.damage.severity_score}"
         )
-    ).send()
+
+    claim_text = (
+        f"policy_number={claim_info.policy_number}; claim_id={claim_info.claim_id}; "
+        f"claimant={claim_info.claimant_name}; vehicle={claim_info.vehicle_registration}; "
+        f"incident_date={claim_info.incident_date}"
+    )
+
+    response = await llm.ainvoke(
+        prompt.format(
+            vehicle_evidence=vehicle_evidence,
+            claim_information=claim_text,
+            policy_context=policy_context,
+            question=message_query,
+        )
+    )
+
+    # ── Structured decision ───────────────────────────────────────────────────
+    if damage_report and damage_report.damage:
+        decision, report_text = decision_pipeline.run(
+            damage_report.damage,
+            claim_info,
+            evidence,
+        )
+        evidence_refs = "\n".join(
+            f"- {item.source or 'policy'} — page {item.page if item.page is not None else 'N/A'}"
+            for item in evidence
+        )
+        await cl.Message(
+            content=(
+                f"🤖 **Multimodal Claim Assessment**\n\n{response}\n\n"
+                f"## Structured Decision\n"
+                f"- Decision: `{decision.decision}`\n"
+                f"- Coverage status: `{decision.coverage_status}`\n"
+                f"- Risk score: `{decision.risk_score:.2f}`\n\n"
+                f"**Rationale:** {decision.rationale}\n\n"
+                f"## Evidence\n{evidence_refs}\n\n"
+                f"## Warnings\n{chr(10).join('- ' + w for w in decision.warnings) or '- None'}"
+            )
+        ).send()
+    else:
+        await cl.Message(content=f"🤖 **Policy Assessment**\n\n{response}").send()
