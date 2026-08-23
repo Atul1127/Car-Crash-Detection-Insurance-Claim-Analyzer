@@ -1,107 +1,169 @@
-# Car Crash Detection & Insurance Claim Analyzer
+# Car-Crash-Detection-Insurance-Claim-Analyzer
 
-An end-to-end AI system that analyzes vehicle damage from images and determines insurance claim eligibility based on a policy document — built with YOLOv8, LangChain, FAISS, GPT-4o, and Chainlit.
+An end-to-end AI system for vehicle damage detection, insurance policy analysis, claim intelligence, and explainable claim assessment. The project combines computer vision, document retrieval, multimodal reasoning, OCR, risk analysis, and policy-grounded decision support.
 
----
+## Target Architecture
 
-## What it does
+```text
+CAR DAMAGE IMAGE
+       │
+       ▼
+Image Quality Check
+       │
+       ▼
+YOLOv8 Damage Detection
+       │
+       ▼
+Damage Classification
+       │
+       ▼
+Severity Estimation
+       │
+       ├──────────────────────┐
+       ▼                      ▼
+Claim Information        Policy Documents
+OCR + Metadata           Existing / Advanced RAG
+       │                      │
+       └──────────┬───────────┘
+                  ▼
+       Multimodal / Context RAG
+                  │
+                  ▼
+          Claim Decision Engine
+          Risk + Coverage
+                  │
+                  ▼
+       Explainable Claim Report
+```
 
-1. **Damage Detection** — User uploads a photo of a damaged vehicle. A fine-tuned YOLOv8 model detects damage type and confidence.
-2. **Damage Classification** — Detected damage is classified into one of 8 categories: `bumper_dent`, `bumper_scratch`, `door_dent`, `door_scratch`, `glass_shatter`, `head_lamp`, `tail_lamp`, `unknown`.
-3. **Policy Lookup (RAG)** — A RAG pipeline retrieves relevant clauses from a real insurance policy PDF using FAISS vector search and sentence embeddings.
-4. **Claim Decision** — GPT-4o reasons over the detected damage and retrieved policy context to give the user a structured claim eligibility verdict.
+## Current Baseline
 
----
+The initial system already provides:
+
+- **Damage Detection** — Fine-tuned YOLOv8 model for vehicle damage.
+- **Damage Classification** — bumper dents/scratches, door dents/scratches, glass shatter, lamps, and unknown damage.
+- **Policy RAG** — FAISS vector retrieval over an insurance policy document.
+- **LLM Reasoning** — Policy-grounded claim assessment.
+- **Chainlit Interface** — Interactive application for image and policy analysis.
+
+## Upgrade Roadmap
+
+### Phase 1 — Foundation
+
+- Typed claim data contracts
+- Image-quality validation
+- Reusable YOLO detector interface
+- Pipeline orchestration
+- Modular project architecture
+
+### Phase 2 — Advanced Computer Vision
+
+- Robust image-quality assessment
+- Improved YOLOv8 damage detection
+- Damage classification
+- Severity estimation
+- Confidence calibration
+- Detection and classification evaluation
+
+### Phase 3 — Claim Intelligence
+
+- OCR pipeline
+- Claim-form extraction
+- Policy-number and vehicle metadata extraction
+- Structured claim validation
+
+### Phase 4 — Advanced RAG
+
+- Policy parsing and metadata
+- Dense retrieval
+- BM25 sparse retrieval
+- Hybrid search
+- FAISS indexing
+- Metadata filtering
+- Cross-encoder reranking
+- Context compression
+
+### Phase 5 — Multimodal Decision Engine
+
+- Image evidence
+- Claim metadata
+- Retrieved policy evidence
+- Coverage reasoning
+- Risk scoring
+- Anomaly and fraud signals
+
+### Phase 6 — Explainable Claim Report
+
+- Damage summary
+- Severity assessment
+- Policy evidence
+- Coverage decision
+- Risk score
+- Reasoning trace
+- Recommendations
 
 ## Tech Stack
 
 | Component | Technology |
 |---|---|
-| Damage Detection | YOLOv8 (fine-tuned on Roboflow dataset) |
-| Vector Store | FAISS |
-| Embeddings | `all-MiniLM-L6-v2` (sentence-transformers) |
-| LLM | GPT-4o via LangChain |
-| RAG Chain | LangChain `ConversationalRetrievalChain` |
+| Computer Vision | YOLOv8, Ultralytics, OpenCV, Pillow |
+| OCR | Planned OCR extraction pipeline |
+| Retrieval | FAISS, dense embeddings, BM25, hybrid search |
+| Reranking | Cross-encoder reranker |
+| LLM | Local/hosted LLM through a modular interface |
+| Orchestration | Python, LangChain/LCEL where appropriate |
 | Frontend | Chainlit |
-| Policy Document | National Insurance Company — Private Car Terms & Conditions |
-
----
+| Evaluation | Precision, Recall, mAP, classification metrics, retrieval metrics |
 
 ## Project Structure
 
+```text
+Car-Crash-Detection-Insurance-Claim-Analyzer/
+├── app.py
+├── config.py
+├── chain.py
+├── embeddings.py
+├── loader.py
+├── llm.py
+├── train_cnn.py
+├── data.yaml
+├── chainlit.md
+│
+├── claimvision/
+│   ├── __init__.py
+│   ├── schemas.py
+│   ├── pipeline.py
+│   └── vision/
+│       ├── __init__.py
+│       ├── quality.py
+│       └── detector.py
+│
+├── docs/
+│   └── ARCHITECTURE.md
+│
+└── Terms and Conditions for Private Car_2.pdf
 ```
-car_crash/
-├── app.py              # Chainlit app — main entry point
-├── chain.py            # LangChain RAG chain setup
-├── embeddings.py       # FAISS index creation and loading
-├── loader.py           # PDF loader and chunking
-├── llm.py              # LLM initialization
-├── config.py           # Paths and configuration constants
-├── test.py             # Model inference testing
-├── train_cnn.py        # YOLOv8 fine-tuning script
-├── data.yaml           # YOLO dataset config
-├── chainlit.md         # Chainlit welcome screen
-└── Terms and Conditions for Private Car_2.pdf  # Insurance policy document
-```
 
----
+## Development
 
-## Setup
+Create a virtual environment and install the project dependencies:
 
-### 1. Clone the repo
-```bash
-git clone https://github.com/abhiram1024/car-crash-insurance.git
-cd car-crash-insurance
-```
-
-### 2. Create a virtual environment
 ```bash
 python -m venv .venv
-.venv\Scripts\activate      # Windows
-source .venv/bin/activate   # Mac/Linux
-```
-
-### 3. Install dependencies
-```bash
+.venv\\Scripts\\activate
 pip install -r requirements.txt
 ```
 
-### 4. Add your API key
-Create a `.env` file in the project root:
-```
-OPENAI_API_KEY=your_key_here
-```
+Run the existing Chainlit application with:
 
-### 5. Add model weights
-Download the fine-tuned YOLOv8 weights (`trained.pt`) and place in the project root. Not included in the repo due to file size.
-
-### 6. Run
 ```bash
 chainlit run app.py
 ```
 
----
+## Project Status
 
-## Model Training
+**Active development.** The repository is being upgraded incrementally from the original car-damage detection and policy-RAG prototype into a modular multimodal insurance claim intelligence system.
 
-The YOLOv8 model was fine-tuned on a car damage dataset sourced from [Roboflow Universe](https://universe.roboflow.com), covering 8 damage categories across bumpers, doors, glass, and lamps.
+## Internship
 
-To retrain:
-```bash
-python train_cnn.py
-```
-
----
-
-## How the RAG pipeline works
-
-1. The insurance PDF is chunked and embedded using `all-MiniLM-L6-v2`
-2. Chunks are stored in a FAISS index (cached to disk)
-3. On each query, relevant policy sections are retrieved based on the detected damage type
-4. GPT-4o receives: detected damage + confidence + retrieved policy clauses → outputs claim verdict
-
----
-
-## Built during
-
-TCS Research Internship — IIT Kharagpur, June 2026
+Built and extended during the TCS Research Internship — IIT Kharagpur, June 2026.

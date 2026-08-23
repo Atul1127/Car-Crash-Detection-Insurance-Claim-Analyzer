@@ -36,6 +36,7 @@ Thumbs.db
 # Generated ML artifacts
 runs/
 faiss_index/
+faiss_index.manifest.json
 wandb/
 mlruns/
 vectorstore/
