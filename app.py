@@ -1,111 +1,17 @@
-import asyncio
-import io
+import sys
 from pathlib import Path
 
-# src-layout bootstrap for local Chainlit execution.
-import sys
+# Allow Chainlit to import the src-layout package when run from the repo root.
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 import chainlit as cl
 from PIL import Image
 
-from car_crash_claim_analyzer.claim.pipeline import ClaimDocumentPipeline
-from car_crash_claim_analyzer.decision.pipeline import ClaimDecisionPipeline
-from car_crash_claim_analyzer.pipeline import CarCrashClaimAnalyzerPipeline
-from car_crash_claim_analyzer.rag.context import format_context
-from car_crash_claim_analyzer.rag.pipeline import PolicyRAGPipeline
+from car_crash_claim_analyzer.application import ClaimAnalysisApplication
 from car_crash_claim_analyzer.schemas import ClaimInformation
-from car_crash_claim_analyzer.vision.detector import DamageDetector
-from car_crash_claim_analyzer.vision.severity import SeverityEstimator
-from config import (
-    FAISS_INDEX_PATH,
-    LOCAL_EMBED_MODEL,
-    MODEL_NAME,
-    POLICY_DOCUMENT_PATH,
-    RETRIEVAL_K,
-    YOLO_MODEL_PATH,
-)
-from langchain_community.llms import Ollama
-from langchain_core.prompts import ChatPromptTemplate
 
 
-def resolve_weights() -> Path:
-    configured = Path(YOLO_MODEL_PATH)
-    if configured.exists():
-        return configured
-    for candidate in (
-        Path("runs/detect/train-3/weights") / configured.name,
-        Path("runs/detect/train/weights") / configured.name,
-    ):
-        if candidate.exists():
-            return candidate
-    raise FileNotFoundError(
-        f"YOLO weights not found: {YOLO_MODEL_PATH}. Configure YOLO_MODEL_PATH."
-    )
-
-
-# ── Application modules ───────────────────────────────────────────────────────
-detector = DamageDetector(resolve_weights())
-severity_estimator = SeverityEstimator()
-vision_pipeline = CarCrashClaimAnalyzerPipeline()
-claim_pipeline = ClaimDocumentPipeline()
-decision_pipeline = ClaimDecisionPipeline()
-
-policy_rag = PolicyRAGPipeline(
-    embedding_model=LOCAL_EMBED_MODEL,
-    top_k=RETRIEVAL_K,
-    index_path=FAISS_INDEX_PATH,
-)
-policy_rag.build(POLICY_DOCUMENT_PATH)
-llm = Ollama(model=MODEL_NAME)
-
-prompt = ChatPromptTemplate.from_template(
-    """You are an expert insurance claim analysis assistant. Your job is to summarize and interpret ONLY the evidence supplied below.
-
-STRICT EVIDENCE RULES:
-1. Use ONLY the supplied policy evidence and structured claim/vehicle evidence.
-2. Never invent policy clauses, coverage, exclusions, limits, amounts, dates, or conditions.
-3. A retrieved policy passage is evidence, not proof that the passage applies to this claim. Check its wording and applicability before drawing a conclusion.
-4. If the evidence does not establish coverage or an exclusion, say exactly: 'Coverage is not established from the retrieved evidence.' Recommend manual review.
-5. Never infer coverage merely because a word such as 'covered' or 'coverage' appears in a retrieved passage.
-6. Never treat a monetary amount in a retrieved passage as a claim limit unless the passage explicitly states that it applies to this claim and this type of loss.
-7. Preserve the exact meaning and scope of policy conditions. If a condition applies to a different section, liability type, vehicle use, or scenario, do not apply it to own-damage coverage.
-8. Do NOT conclude that coverage is absent merely because the retrieved evidence does not name the damaged component (for example, a headlamp). Vehicle policies may define coverage at a broader vehicle/loss level. Only conclude that coverage is not established when the supplied evidence does not establish an applicable coverage provision.
-9. Distinguish between 'not mentioned in the retrieved evidence' and 'excluded by the policy'. The latter requires an explicit applicable exclusion.
-
-IMPORTANT VISION SEMANTICS:
-- A YOLO damage label is a DAMAGE CATEGORY, not a vehicle category.
-- The label 'unknown' means only that the detector did not map the detected damage to a known damage category.
-- NEVER interpret 'unknown' as 'unknown vehicle', 'unknown vehicle class', 'uninsured vehicle', or any other vehicle/policy classification.
-- Do not invent a specific damage type when the detector says 'unknown'. Describe it only as detected vehicle damage with the supplied confidence and severity.
-
-OUTPUT RULES:
-- Separate facts directly supported by evidence from interpretation.
-- Cite policy evidence by source/page when discussing a specific clause.
-- For every important coverage/exclusion statement, explain which supplied evidence supports it.
-- If evidence conflicts or is insufficient, state that clearly.
-- Do not manufacture repair costs or financial values.
-- Keep the assessment concise and suitable for an insurance claims reviewer.
-
-Vehicle evidence:
-{vehicle_evidence}
-
-Claim information:
-{claim_information}
-
-Policy evidence:
-{policy_context}
-
-Question:
-{question}
-
-Return an evidence-grounded assessment with these sections:
-1. Findings
-2. Coverage assessment
-3. Conditions/exclusions actually supported by the evidence
-4. Uncertainty / manual-review reasons
-"""
-)
+application = ClaimAnalysisApplication()
 
 
 @cl.on_chat_start
@@ -125,131 +31,103 @@ async def start():
 async def main(message: cl.Message):
     damage_report = cl.user_session.get("damage_report")
     claim_info = cl.user_session.get("claim_info") or ClaimInformation()
-    detected_damages: list[str] = []
     message_query = message.content or ""
+    detected_damages: list[str] = []
 
-    # ── Vehicle image ─────────────────────────────────────────────────────────
-    if message.elements:
-        for element in message.elements:
-            if "image" not in element.mime:
-                continue
+    for element in message.elements or []:
+        if "image" not in element.mime:
+            continue
 
-            await cl.Message(content="🔍 Running image analysis...").send()
-            report = await asyncio.to_thread(
-                vision_pipeline.run, element.path, detector=detector
-            )
+        await cl.Message(content="🔍 Running image analysis...").send()
+        report, annotated_bytes, detected_damages = await application.analyze_image(element.path)
 
-            if not report.image_quality.valid:
-                reasons = "\n".join(f"- {reason}" for reason in report.image_quality.reasons)
-                await cl.Message(
-                    content=(
-                        "❌ **Image rejected by quality gate**\n\n"
-                        f"{reasons}\n\nQuality score: **{report.image_quality.score:.2f}**"
-                    )
-                ).send()
-                continue
+        if not report.image_quality.valid:
+            reasons = "\n".join(f"- {reason}" for reason in report.image_quality.reasons)
+            await cl.Message(
+                content=(
+                    "❌ **Image rejected by quality gate**\n\n"
+                    f"{reasons}\n\nQuality score: **{report.image_quality.score:.2f}**"
+                )
+            ).send()
+            continue
 
-            with Image.open(element.path) as source_image:
-                image_width, image_height = source_image.size
+        damage_report = report
+        cl.user_session.set("damage_report", report)
 
-            report.damage = severity_estimator.estimate(
-                report.damage,
-                image_width=image_width,
-                image_height=image_height,
-            )
-            damage_report = report
-            cl.user_session.set("damage_report", report)
-            detected_damages = [d.label for d in report.damage.detections]
-
-            try:
-                annotated = detector.render_last_result()
-                output_image = Image.fromarray(annotated[..., ::-1])
-                buffer = io.BytesIO()
-                output_image.save(buffer, format="JPEG", quality=90)
-                buffer.seek(0)
-                cl_image = cl.Image(
-                    content=buffer.getvalue(),
+        image_elements = []
+        if annotated_bytes:
+            image_elements = [
+                cl.Image(
+                    content=annotated_bytes,
                     name="damage_assessment.jpg",
                     display="inline",
                     size="large",
                 )
-                image_elements = [cl_image]
-            except Exception as exc:
-                image_elements = []
-                await cl.Message(content=f"⚠️ Bounding-box preview unavailable: `{exc}`").send()
+            ]
 
-            damage_lines = [
-                f"- **{d.label}** — confidence `{d.confidence:.2f}`"
-                for d in report.damage.detections
-            ] or ["- No trained damage class detected"]
+        damage_lines = [
+            f"- **{d.label}** — confidence `{d.confidence:.2f}`"
+            for d in report.damage.detections
+        ] or ["- No trained damage class detected"]
 
+        await cl.Message(
+            content=(
+                "✅ **Image Analysis Complete**\n\n"
+                f"**Damage:**\n{'\n'.join(damage_lines)}\n\n"
+                f"**Severity:** `{report.damage.severity or 'unknown'}`\n"
+                f"**Severity score:** `{report.damage.severity_score or 0:.2f}`\n"
+                f"**Image quality:** `{report.image_quality.score:.2f}`"
+            ),
+            elements=image_elements,
+        ).send()
+
+        if detected_damages:
+            damage_terms = ", ".join(sorted(set(detected_damages)))
+            message_query = (
+                "For a private motor insurance claim involving accidental damage to the insured vehicle "
+                f"(detected damage category: {damage_terms}; severity: {report.damage.severity}), "
+                "retrieve the policy provisions that establish the applicable vehicle/own-damage coverage, "
+                "conditions, exclusions, depreciation, deductibles/excess, repair limitations, and relevant "
+                "claim requirements. Do not require the policy to name the individual damaged component. "
+                "Prioritize clauses that actually apply to accidental physical damage to the insured vehicle."
+            )
+
+    for element in message.elements or []:
+        if "image" in element.mime or not getattr(element, "path", None):
+            continue
+        mime = str(element.mime).lower()
+        if not any(mime.endswith(ext) for ext in ("pdf", "jpeg", "jpg", "png", "tiff", "webp")):
+            continue
+
+        await cl.Message(content="📄 Extracting claim information with OCR...").send()
+        try:
+            claim_info, warnings = await application.extract_claim(element.path)
+            cl.user_session.set("claim_info", claim_info)
+            fields = [
+                f"- Policy number: `{claim_info.policy_number or 'missing'}`",
+                f"- Claim ID: `{claim_info.claim_id or 'missing'}`",
+                f"- Claimant: `{claim_info.claimant_name or 'missing'}`",
+                f"- Vehicle registration: `{claim_info.vehicle_registration or 'missing'}`",
+                f"- Incident date: `{claim_info.incident_date or 'missing'}`",
+            ]
+            warning_text = "\n".join(f"- {w}" for w in warnings) or "- None"
             await cl.Message(
                 content=(
-                    "✅ **Image Analysis Complete**\n\n"
-                    f"**Damage:**\n{'\n'.join(damage_lines)}\n\n"
-                    f"**Severity:** `{report.damage.severity or 'unknown'}`\n"
-                    f"**Severity score:** `{report.damage.severity_score or 0:.2f}`\n"
-                    f"**Image quality:** `{report.image_quality.score:.2f}`"
-                ),
-                elements=image_elements,
-            ).send()
-
-            if detected_damages:
-                damage_terms = ", ".join(sorted(set(detected_damages)))
-                message_query = (
-                    "For a private motor insurance claim involving accidental damage to the insured vehicle "
-                    f"(detected damage category: {damage_terms}; severity: {report.damage.severity}), "
-                    "retrieve the policy provisions that establish the applicable vehicle/own-damage coverage, "
-                    "conditions, exclusions, depreciation, deductibles/excess, repair limitations, and relevant "
-                    "claim requirements. Do not require the policy to name the individual damaged component. "
-                    "Prioritize clauses that actually apply to accidental physical damage to the insured vehicle."
+                    "📋 **Claim Information Extracted**\n\n"
+                    + "\n".join(fields)
+                    + f"\n\n**Validation warnings:**\n{warning_text}"
                 )
-
-    # ── Claim document ────────────────────────────────────────────────────────
-    if message.elements:
-        for element in message.elements:
-            if "image" in element.mime or not getattr(element, "path", None):
-                continue
-            if not any(
-                str(element.mime).lower().endswith(ext)
-                for ext in ("pdf", "jpeg", "jpg", "png", "tiff", "webp")
-            ):
-                continue
-
-            await cl.Message(content="📄 Extracting claim information with OCR...").send()
-            try:
-                claim_info, warnings = await asyncio.to_thread(claim_pipeline.run, element.path)
-                cl.user_session.set("claim_info", claim_info)
-                fields = [
-                    f"- Policy number: `{claim_info.policy_number or 'missing'}`",
-                    f"- Claim ID: `{claim_info.claim_id or 'missing'}`",
-                    f"- Claimant: `{claim_info.claimant_name or 'missing'}`",
-                    f"- Vehicle registration: `{claim_info.vehicle_registration or 'missing'}`",
-                    f"- Incident date: `{claim_info.incident_date or 'missing'}`",
-                ]
-                warning_text = "\n".join(f"- {w}" for w in warnings) or "- None"
-                await cl.Message(
-                    content=(
-                        "📋 **Claim Information Extracted**\n\n"
-                        + "\n".join(fields)
-                        + f"\n\n**Validation warnings:**\n{warning_text}"
-                    )
-                ).send()
-            except Exception as exc:
-                await cl.Message(content=f"❌ OCR processing failed: `{exc}`").send()
+            ).send()
+        except Exception as exc:
+            await cl.Message(content=f"❌ OCR processing failed: `{exc}`").send()
 
     if not message_query.strip():
         return
 
-    # ── Policy evidence ──────────────────────────────────────────────────────
     status = cl.Message(content="📑 **Policy Retrieval:** retrieving and reranking evidence...")
     await status.send()
-
     try:
-        # FAISS + embedding inference is synchronous/CPU-heavy. Running it in a
-        # worker thread prevents Chainlit's async event loop from appearing frozen.
-        evidence = await asyncio.to_thread(policy_rag.retrieve, message_query)
-        policy_context = format_context(evidence)
+        evidence, policy_context = await application.retrieve_policy(message_query)
         status.content = f"✅ **Policy Retrieval Complete** — {len(evidence)} evidence chunks found."
         await status.update()
     except Exception as exc:
@@ -257,32 +135,10 @@ async def main(message: cl.Message):
         await status.update()
         return
 
-    vehicle_evidence = "No vehicle analysis available."
-    if damage_report and damage_report.damage:
-        vehicle_evidence = (
-            f"Detected damage labels: {[d.label for d in damage_report.damage.detections]}; "
-            f"severity: {damage_report.damage.severity}; "
-            f"severity_score: {damage_report.damage.severity_score}. "
-            "The labels describe detected damage categories only, not vehicle classes."
-        )
-
-    claim_text = (
-        f"policy_number={claim_info.policy_number}; claim_id={claim_info.claim_id}; "
-        f"claimant={claim_info.claimant_name}; vehicle={claim_info.vehicle_registration}; "
-        f"incident_date={claim_info.incident_date}"
-    )
-
     llm_status = cl.Message(content="🤖 **Claim Reasoning:** generating policy-grounded assessment...")
     await llm_status.send()
     try:
-        response = await llm.ainvoke(
-            prompt.format(
-                vehicle_evidence=vehicle_evidence,
-                claim_information=claim_text,
-                policy_context=policy_context,
-                question=message_query,
-            )
-        )
+        response = await application.reason(message_query, damage_report, claim_info, policy_context)
         llm_status.content = "✅ **Claim Reasoning Complete**"
         await llm_status.update()
     except Exception as exc:
@@ -290,15 +146,9 @@ async def main(message: cl.Message):
         await llm_status.update()
         return
 
-    # ── Structured decision ───────────────────────────────────────────────────
     if damage_report and damage_report.damage:
         try:
-            decision, _ = await asyncio.to_thread(
-                decision_pipeline.run,
-                damage_report.damage,
-                claim_info,
-                evidence,
-            )
+            decision, _ = await application.decide(damage_report, claim_info, evidence)
         except Exception as exc:
             await cl.Message(content=f"❌ Structured decision failed: `{type(exc).__name__}: {exc}`").send()
             return
@@ -307,6 +157,7 @@ async def main(message: cl.Message):
             f"- {item.source or 'policy'} — page {item.page if item.page is not None else 'N/A'}"
             for item in evidence
         )
+        warnings = "\n".join(f"- {w}" for w in decision.warnings) or "- None"
         await cl.Message(
             content=(
                 f"🤖 **Claim Assessment**\n\n{response}\n\n"
@@ -316,6 +167,6 @@ async def main(message: cl.Message):
                 f"- Risk score: `{decision.risk_score:.2f}`\n\n"
                 f"**Rationale:** {decision.rationale}\n\n"
                 f"## Evidence\n{evidence_refs}\n\n"
-                f"## Warnings\n{chr(10).join('- ' + w for w in decision.warnings) or '- None'}"
+                f"## Warnings\n{warnings}"
             )
         ).send()
