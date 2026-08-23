@@ -1,0 +1,44 @@
+# Environment
+.venv/
+venv/
+env/
+.env
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+
+# Model weights (too large for GitHub)
+*.pt
+*.pth
+*.onnx
+*.weights
+
+# FAISS index (regenerated at runtime)
+faiss_index/
+
+# Chainlit internals
+.chainlit/
+
+# Training data folders
+train/
+valid/
+test/
+runs/
+
+# Temp files created at runtime
+temp_upload_*
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
