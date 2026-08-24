@@ -14,6 +14,8 @@ class SeverityEstimator:
         "bumper_scratch": 0.25,
         "door_dent": 0.45,
         "door_scratch": 0.25,
+        "unclassified_damage": 0.35,
+        # Backward compatibility for old serialized assessments.
         "unknown": 0.35,
     }
 
