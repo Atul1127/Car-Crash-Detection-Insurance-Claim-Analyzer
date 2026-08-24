@@ -12,7 +12,6 @@ from car_crash_claim_analyzer.decision.pipeline import ClaimDecisionPipeline
 from car_crash_claim_analyzer.pipeline import CarCrashClaimAnalyzerPipeline
 from car_crash_claim_analyzer.rag.context import format_context
 from car_crash_claim_analyzer.rag.pipeline import PolicyRAGPipeline
-from car_crash_claim_analyzer.schemas import ClaimInformation
 from car_crash_claim_analyzer.vision.detector import DamageDetector
 from car_crash_claim_analyzer.vision.severity import SeverityEstimator
 from config import (
@@ -64,59 +63,60 @@ class ClaimAnalysisApplication:
             Path("runs/detect/train-3/weights") / configured.name,
             Path("runs/detect/train/weights") / configured.name,
         ]
-
         checked: list[str] = []
         for candidate in candidates:
             if not candidate.exists() or candidate in candidates[: candidates.index(candidate)]:
                 continue
             try:
                 model = YOLO(str(candidate))
-                names = model.names
-                normalized = {str(value).strip().lower() for value in names.values()}
+                normalized = {str(value).strip().lower() for value in model.names.values()}
                 checked.append(f"{candidate}: {sorted(normalized)}")
                 if EXPECTED_DAMAGE_CLASSES.issubset(normalized):
                     return candidate
             except Exception as exc:
                 checked.append(f"{candidate}: load failed ({exc})")
-
-        details = "\n".join(checked)
         raise FileNotFoundError(
             "No compatible trained car-damage YOLO weights were found. "
             "Expected the 8 damage classes from data/damage_dataset.yaml. "
             "Do not use a generic/object-detection best.pt.\n"
-            f"Checked:\n{details}"
+            + "\n".join(checked)
         )
 
     @staticmethod
     def _build_prompt() -> ChatPromptTemplate:
         return ChatPromptTemplate.from_template(
-            """You are an expert insurance claim analysis assistant. Your job is to summarize and interpret ONLY the evidence supplied below.
+            """You are an expert insurance claim analysis assistant. Summarize and interpret ONLY the supplied evidence.
 
 STRICT EVIDENCE RULES:
-1. Use ONLY the supplied policy evidence and structured claim/vehicle evidence.
-2. Never invent policy clauses, coverage, exclusions, limits, amounts, dates, or conditions.
-3. A retrieved policy passage is evidence, not proof that the passage applies to this claim. Check its wording and applicability before drawing a conclusion.
-4. If the supplied evidence does not contain an explicit applicable coverage provision, say exactly: 'Coverage is not established from the retrieved evidence.' Recommend manual review.
-5. Never infer coverage merely because words such as 'covered', 'coverage', 'insured', or 'policy' appear in a retrieved passage.
-6. Never infer an exclusion merely because the word 'excluded' or 'exclusion' appears. The exclusion must apply to the detected loss/component and scenario.
-7. Never treat a monetary amount in a retrieved passage as a claim limit unless the passage explicitly states that it applies to this claim and this type of loss.
-8. Preserve the exact meaning and scope of policy conditions. If a condition applies to a different section, liability type, vehicle use, or scenario, do not apply it to own-damage coverage.
-9. Distinguish between 'not mentioned in the retrieved evidence' and 'excluded by the policy'. The latter requires an explicit applicable exclusion.
-10. The deterministic decision engine is the source of truth for the structured coverage status. Your explanation must not contradict it.
+1. Never invent policy clauses, coverage, exclusions, limits, amounts, dates, or conditions.
+2. A retrieved passage is evidence; determine applicability from its actual wording and section.
+3. Never infer coverage merely because generic words such as 'coverage', 'covered', 'insured', or 'policy' appear.
+4. If the evidence explicitly states that the insurer indemnifies the insured against loss of or damage to the insured vehicle, or explicitly covers accidental damage to the insured vehicle, that IS evidence of general own-damage coverage. Do not later claim that no coverage provision exists.
+5. General own-damage coverage and claim-specific applicability are different questions. If general coverage is established but the vision model reports unclassified_damage, say that general coverage is evidenced but claim-specific applicability remains uncertain because the loss category is not reliably classified.
+6. An exclusion requires an explicit applicable exclusion. A generic exclusion, a third-party liability clause, towing clause, or owner-driver injury clause must not be presented as an exclusion for physical damage to the insured vehicle unless its wording actually applies.
+7. A repair estimate, deductible, excess, or monetary amount is a condition/financial term, NOT an exclusion and NOT automatically a claim limit. State its exact scope.
+8. Do not use a condition from Section II/III/IV to negate Section I own-damage coverage unless the supplied wording explicitly connects them.
+9. Distinguish: (a) coverage explicitly established, (b) exclusion explicitly established, and (c) applicability unresolved. Never collapse these into one statement.
+10. The deterministic decision engine is the source of truth for the structured decision. Do not contradict its manual-review/uncertain result.
 
-IMPORTANT VISION SEMANTICS:
-- A YOLO damage label is a DAMAGE CATEGORY, not a vehicle category.
-- 'unknown', 'unclassified_damage', and 'other' mean only that the detector did not map the detected damage to a supported damage category.
-- NEVER interpret these labels as 'unknown vehicle', 'unknown vehicle class', 'uninsured vehicle', or any other vehicle/policy classification.
-- Do not invent a specific damage type when the detector returns an unknown/unclassified label. Describe it only as detected vehicle damage with the supplied confidence and severity.
+VISION SEMANTICS:
+- YOLO labels are damage categories only, never vehicle categories.
+- 'unknown', 'unclassified_damage', and 'other' mean the detector did not map the damage to a supported category.
+- Never interpret them as unknown vehicle, unknown vehicle class, uninsured vehicle, or a policy condition.
+- Do not invent a component when the label is unclassified_damage.
+
+EVIDENCE PRIORITY:
+1. Explicit Section I / own-damage / loss-or-damage-to-the-insured-vehicle wording.
+2. Explicit applicable exclusions or conditions for that same own-damage section.
+3. Financial/repair terms that qualify a claim but do not themselves establish or negate coverage.
+4. Other sections only when their wording explicitly applies to this claim.
 
 OUTPUT RULES:
-- Separate facts directly supported by evidence from interpretation.
-- Cite policy evidence by source/page when discussing a specific clause.
-- For every important coverage/exclusion statement, explain which supplied evidence supports it.
-- If evidence conflicts or is insufficient, state that clearly.
-- Do not manufacture repair costs or financial values.
-- Keep the assessment concise and suitable for an insurance claims reviewer.
+- Keep the assessment concise and suitable for an insurance reviewer.
+- Cite source/page for every specific policy claim.
+- Never say 'the policy does not provide coverage' when the supplied evidence explicitly establishes general own-damage coverage.
+- If general coverage is established but the claim cannot be classified, use: 'General own-damage coverage is evidenced in the retrieved policy, but claim-specific applicability cannot be determined from the current visual classification.'
+- If no applicable coverage clause is retrieved, use: 'Coverage is not established from the retrieved evidence.'
 
 Vehicle evidence:
 {vehicle_evidence}
@@ -130,7 +130,7 @@ Policy evidence:
 Question:
 {question}
 
-Return an evidence-grounded assessment with these sections:
+Return exactly these sections:
 1. Findings
 2. Coverage assessment
 3. Conditions/exclusions actually supported by the evidence
@@ -142,13 +142,11 @@ Return an evidence-grounded assessment with these sections:
         report = await asyncio.to_thread(self.vision_pipeline.run, path, detector=self.detector)
         if not report.image_quality.valid:
             return report, None, None
-
         with Image.open(path) as source_image:
             width, height = source_image.size
         report.damage = self.severity_estimator.estimate(
             report.damage, image_width=width, image_height=height
         )
-
         image_element = None
         try:
             annotated = self.detector.render_last_result()
@@ -157,7 +155,7 @@ Return an evidence-grounded assessment with these sections:
             output_image.save(buffer, format="JPEG", quality=90)
             image_element = buffer.getvalue()
         except Exception:
-            image_element = None
+            pass
         return report, image_element, [d.label for d in report.damage.detections]
 
     async def extract_claim(self, path: str):
@@ -177,7 +175,6 @@ Return an evidence-grounded assessment with these sections:
             )
         else:
             vehicle_evidence = "No vehicle analysis available."
-
         claim_text = (
             f"policy_number={claim_info.policy_number}; claim_id={claim_info.claim_id}; "
             f"claimant={claim_info.claimant_name}; vehicle={claim_info.vehicle_registration}; "
