@@ -7,8 +7,9 @@ class QueryExpander:
     """Generate policy-aware query variants without requiring an LLM."""
 
     POLICY_INTENTS = [
-        "own damage to the insured vehicle accidental loss or damage Section I",
-        "indemnity for loss or damage to the vehicle insured vehicle repair claim",
+        "Section I loss or damage to the insured vehicle own damage",
+        "Section I indemnify the insured against loss of or damage to the vehicle",
+        "own damage accidental loss or damage to the insured vehicle indemnity",
         "conditions exclusions limitations applicable to loss or damage to the insured vehicle",
         "depreciation excess deductible repair estimate claim settlement vehicle damage",
     ]
@@ -28,11 +29,15 @@ class QueryExpander:
         variants = [base]
         lower = base.lower()
 
-        # Vehicle-component queries must be broadened to the policy's actual
-        # own-damage/loss-and-damage language. A policy normally does not list
-        # every component (e.g. headlamp, bumper) separately.
-        if any(term in lower for term in ("damage", "head_lamp", "bumper", "door", "glass", "scratch", "dent")):
+        if any(term in lower for term in (
+            "damage", "head_lamp", "bumper", "door", "glass", "scratch", "dent",
+            "unclassified_damage", "unclassified", "unknown",
+        )):
             variants.extend(f"{base} {intent}" for intent in self.POLICY_INTENTS)
+
+        # Always retrieve the governing own-damage provisions so a component
+        # name cannot crowd out the policy's primary coverage section.
+        variants.extend(self.POLICY_INTENTS[:2])
 
         for key, terms in self.TERMS.items():
             if key in lower or any(term in lower for term in terms):
