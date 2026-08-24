@@ -2,10 +2,9 @@
 
 Usage:
     python scripts/evaluate_yolo.py
-    python scripts/evaluate_yolo.py --weights models/best.pt --device 0
+    python scripts/evaluate_yolo.py --weights models/best.pt --device cpu
 
-The script reports overall and per-class precision/recall/mAP and saves the
-Ultralytics confusion matrix and validation plots under reports/yolo/.
+If ``--device`` is omitted, CPU is used when CUDA is unavailable.
 """
 
 from __future__ import annotations
@@ -14,38 +13,39 @@ import argparse
 import sys
 from pathlib import Path
 
-# When a script is executed as ``python scripts/evaluate_yolo.py``, Python puts
-# ``scripts/`` on sys.path instead of the repository root. Add the project root
-# explicitly so root modules such as config.py can always be imported.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+import torch
 from ultralytics import YOLO
-
 from config import YOLO_MODEL_PATH
 
 EXPECTED_CLASSES = [
-    "bumper_dent",
-    "bumper_scratch",
-    "door_dent",
-    "door_scratch",
-    "glass_shatter",
-    "head_lamp",
-    "tail_lamp",
-    "unknown",
+    "bumper_dent", "bumper_scratch", "door_dent", "door_scratch",
+    "glass_shatter", "head_lamp", "tail_lamp", "unknown",
 ]
+
+
+def resolve_device(requested: str) -> str:
+    if requested == "auto":
+        return "0" if torch.cuda.is_available() else "cpu"
+    if requested.isdigit() and not torch.cuda.is_available():
+        print("CUDA is unavailable; falling back to CPU.")
+        return "cpu"
+    return requested
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--weights", default=str(YOLO_MODEL_PATH))
     parser.add_argument("--data", default="data/damage_dataset.yaml")
-    parser.add_argument("--device", default="0")
+    parser.add_argument("--device", default="auto")
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--conf", type=float, default=0.25)
     parser.add_argument("--split", default="test", choices=["val", "test"])
     args = parser.parse_args()
+    device = resolve_device(args.device)
 
     output_dir = PROJECT_ROOT / "reports" / "yolo"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -60,12 +60,13 @@ def main() -> None:
     if missing:
         raise SystemExit(f"Checkpoint is missing expected classes: {sorted(missing)}")
 
+    print(f"Evaluation device: {device}")
     metrics = model.val(
         data=str(PROJECT_ROOT / args.data),
         split=args.split,
         imgsz=args.imgsz,
         conf=args.conf,
-        device=args.device,
+        device=device,
         plots=True,
         project=str(output_dir),
         name=f"{Path(args.weights).stem}_{args.split}",
