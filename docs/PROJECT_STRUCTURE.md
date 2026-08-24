@@ -1,7 +1,7 @@
 # Project Structure
 
 ```text
-Car-Crash-Detection-Insurance-Claim-Analyzer/
+Car-Damage-Detection-and-Insurance-Claim-Analyzer/
 ├── app.py
 ├── config.py
 ├── chainlit.md
