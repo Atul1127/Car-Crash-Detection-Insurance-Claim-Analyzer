@@ -30,10 +30,23 @@ class EvidenceReranker:
                 matched = len(group.intersection(terms))
                 intent_score += min(matched / 4.0, 1.0)
 
-            # Keep query relevance primary, but prevent a page containing one
-            # repeated generic word such as "coverage" from outranking the
-            # policy's actual vehicle-damage provisions.
-            score = 0.60 * overlap + 0.40 * (intent_score / len(self.INTENT_GROUPS))
+            # Strongly prioritize the policy's governing own-damage provision.
+            # This prevents repair limits or unrelated exclusions from replacing
+            # the primary Section I coverage clause.
+            own_damage_phrase = any(
+                phrase in text
+                for phrase in (
+                    "section i",
+                    "loss of or damage to the insured vehicle",
+                    "loss or damage to the insured vehicle",
+                    "loss of or damage to the vehicle",
+                    "damage to the insured vehicle",
+                    "own damage",
+                )
+            )
+            section_i_bonus = 0.30 if own_damage_phrase else 0.0
+
+            score = 0.50 * overlap + 0.30 * (intent_score / len(self.INTENT_GROUPS)) + section_i_bonus
             scored.append((score, document))
 
         scored.sort(key=lambda item: item[0], reverse=True)
@@ -49,21 +62,35 @@ class ContextCompressor:
         "excess", "deductible", "repair", "estimate", "claim", "section",
     }
 
+    COVERAGE_PHRASES = (
+        "loss of or damage to the insured vehicle",
+        "loss or damage to the insured vehicle",
+        "loss of or damage to the vehicle",
+        "damage to the insured vehicle",
+        "own damage",
+    )
+
     def compress(self, query: str, documents: list[Document], max_sentences: int = 7) -> list[Document]:
         query_terms = set(re.findall(r"[a-z0-9]+", query.lower()))
         output: list[Document] = []
 
         for document in documents:
             sentences = re.split(r"(?<=[.!?])\s+", document.page_content)
-            ranked = sorted(
-                sentences,
-                key=lambda sentence: (
-                    len(query_terms.intersection(re.findall(r"[a-z0-9]+", sentence.lower())))
-                    + 0.5 * len(self.PRIORITY_TERMS.intersection(re.findall(r"[a-z0-9]+", sentence.lower())))
-                ),
-                reverse=True,
-            )
-            text = " ".join(ranked[:max_sentences]).strip()
+            scored_sentences = []
+            for sentence in sentences:
+                lower = sentence.lower()
+                score = (
+                    len(query_terms.intersection(re.findall(r"[a-z0-9]+", lower)))
+                    + 0.5 * len(self.PRIORITY_TERMS.intersection(re.findall(r"[a-z0-9]+", lower)))
+                )
+                if any(phrase in lower for phrase in self.COVERAGE_PHRASES):
+                    score += 6.0
+                if "section i" in lower:
+                    score += 3.0
+                scored_sentences.append((score, sentence))
+
+            ranked = sorted(scored_sentences, key=lambda item: item[0], reverse=True)
+            text = " ".join(sentence for _, sentence in ranked[:max_sentences]).strip()
             if text:
                 output.append(Document(page_content=text, metadata=dict(document.metadata)))
 
