@@ -5,7 +5,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 import chainlit as cl
-from PIL import Image
 
 from car_crash_claim_analyzer.application import ClaimAnalysisApplication
 from car_crash_claim_analyzer.schemas import ClaimInformation
@@ -135,17 +134,9 @@ async def main(message: cl.Message):
         await status.update()
         return
 
-    llm_status = cl.Message(content="🤖 **Claim Reasoning:** generating policy-grounded assessment...")
-    await llm_status.send()
-    try:
-        response = await application.reason(message_query, damage_report, claim_info, policy_context)
-        llm_status.content = "✅ **Claim Reasoning Complete**"
-        await llm_status.update()
-    except Exception as exc:
-        llm_status.content = f"❌ **LLM Reasoning Failed:** `{type(exc).__name__}: {exc}`"
-        await llm_status.update()
-        return
-
+    # The deterministic decision is independent of Ollama. Compute it first so
+    # a missing/offline local LLM never prevents the user from getting a claim result.
+    decision = None
     if damage_report and damage_report.damage:
         try:
             decision, _ = await application.decide(damage_report, claim_info, evidence)
@@ -153,6 +144,22 @@ async def main(message: cl.Message):
             await cl.Message(content=f"❌ Structured decision failed: `{type(exc).__name__}: {exc}`").send()
             return
 
+    llm_status = cl.Message(content="🤖 **Claim Reasoning:** generating policy-grounded assessment...")
+    await llm_status.send()
+    try:
+        response = await application.reason(message_query, damage_report, claim_info, policy_context)
+        llm_status.content = "✅ **Claim Reasoning Complete**"
+        await llm_status.update()
+    except Exception as exc:
+        response = (
+            "The local LLM was unavailable, so the assessment below is based on the "
+            "deterministic decision engine and retrieved policy evidence. "
+            f"LLM error: `{type(exc).__name__}: {exc}`"
+        )
+        llm_status.content = "⚠️ **LLM unavailable — deterministic assessment continued**"
+        await llm_status.update()
+
+    if decision is not None:
         evidence_refs = "\n".join(
             f"- {item.source or 'policy'} — page {item.page if item.page is not None else 'N/A'}"
             for item in evidence
