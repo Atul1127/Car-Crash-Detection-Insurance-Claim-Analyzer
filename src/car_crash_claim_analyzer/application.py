@@ -23,16 +23,9 @@ from config import (
     YOLO_MODEL_PATH,
 )
 
-
 EXPECTED_DAMAGE_CLASSES = {
-    "bumper_dent",
-    "bumper_scratch",
-    "door_dent",
-    "door_scratch",
-    "glass_shatter",
-    "head_lamp",
-    "tail_lamp",
-    "unknown",
+    "bumper_dent", "bumper_scratch", "door_dent", "door_scratch",
+    "glass_shatter", "head_lamp", "tail_lamp", "unknown",
 }
 
 
@@ -78,8 +71,7 @@ class ClaimAnalysisApplication:
         raise FileNotFoundError(
             "No compatible trained car-damage YOLO weights were found. "
             "Expected the 8 damage classes from data/damage_dataset.yaml. "
-            "Do not use a generic/object-detection best.pt.\n"
-            + "\n".join(checked)
+            "Do not use a generic/object-detection best.pt.\n" + "\n".join(checked)
         )
 
     @staticmethod
@@ -134,6 +126,9 @@ OUTPUT RULES:
 - Never call a deductible, excess, repair threshold, or unrelated towing clause an exclusion.
 - Never claim that a deductible amount is unknown 'for unclassified damage'; a deductible is policy-level unless the evidence explicitly makes it damage-category-specific.
 - If the deductible amount is not present in retrieved evidence, simply say the applicable amount was not retrieved; do not infer why.
+- Never say 'the claim does not appear to fall under exclusions/conditions' unless the retrieved evidence and supplied claim facts are sufficient to establish that conclusion.
+- If no applicable exclusion was identified, say exactly: 'No applicable exclusion was identified in the retrieved evidence; final applicability requires manual review because claim details and/or damage classification are incomplete.'
+- Do not mention generic 'repair conditions' unless a specific repair condition and its source/page are actually retrieved and applicable.
 - If general coverage is established but the claim cannot be classified, use: 'General own-damage coverage is evidenced in the retrieved policy, but claim-specific applicability cannot be determined from the current visual classification.'
 - If no applicable coverage clause is retrieved, use: 'Coverage is not established from the retrieved evidence.'
 
@@ -163,9 +158,7 @@ Return exactly these sections:
             return report, None, None
         with Image.open(path) as source_image:
             width, height = source_image.size
-        report.damage = self.severity_estimator.estimate(
-            report.damage, image_width=width, image_height=height
-        )
+        report.damage = self.severity_estimator.estimate(report.damage, image_width=width, image_height=height)
         image_element = None
         try:
             annotated = self.detector.render_last_result()
@@ -188,8 +181,7 @@ Return exactly these sections:
         if damage_report and damage_report.damage:
             vehicle_evidence = (
                 f"Detected damage labels: {[d.label for d in damage_report.damage.detections]}; "
-                f"severity: {damage_report.damage.severity}; "
-                f"severity_score: {damage_report.damage.severity_score}. "
+                f"severity: {damage_report.damage.severity}; severity_score: {damage_report.damage.severity_score}. "
                 "The labels describe detected damage categories only, not vehicle classes."
             )
         else:
@@ -199,19 +191,12 @@ Return exactly these sections:
             f"claimant={claim_info.claimant_name}; vehicle={claim_info.vehicle_registration}; "
             f"incident_date={claim_info.incident_date}"
         )
-        return await self.llm.ainvoke(
-            self.prompt.format(
-                vehicle_evidence=vehicle_evidence,
-                claim_information=claim_text,
-                policy_context=policy_context,
-                question=message_query,
-            )
-        )
+        return await self.llm.ainvoke(self.prompt.format(
+            vehicle_evidence=vehicle_evidence,
+            claim_information=claim_text,
+            policy_context=policy_context,
+            question=message_query,
+        ))
 
     async def decide(self, damage_report, claim_info, evidence):
-        return await asyncio.to_thread(
-            self.decision_pipeline.run,
-            damage_report.damage,
-            claim_info,
-            evidence,
-        )
+        return await asyncio.to_thread(self.decision_pipeline.run, damage_report.damage, claim_info, evidence)
