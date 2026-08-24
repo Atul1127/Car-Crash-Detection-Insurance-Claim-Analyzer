@@ -16,7 +16,6 @@ CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1000"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "200"))
 
 # Models
-# Local Ollama model. Keep this aligned with `ollama list`.
 MODEL_NAME = os.getenv("LLM_MODEL", "llama3.2:3b")
 LOCAL_EMBED_MODEL = os.getenv("EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
 YOLO_MODEL_PATH = os.getenv("YOLO_MODEL_PATH", str(ROOT_DIR / "models" / "best.pt"))
@@ -27,10 +26,11 @@ YOLO_IOU = float(os.getenv("YOLO_IOU", "0.45"))
 YOLO_DEVICE = os.getenv("YOLO_DEVICE", "auto")
 
 # Image quality gate
-# 224px permits common web images while still rejecting genuinely tiny inputs.
 IMAGE_MIN_WIDTH = int(os.getenv("IMAGE_MIN_WIDTH", "320"))
 IMAGE_MIN_HEIGHT = int(os.getenv("IMAGE_MIN_HEIGHT", "224"))
 IMAGE_MIN_BRIGHTNESS = float(os.getenv("IMAGE_MIN_BRIGHTNESS", "8.0"))
+# The blur metric is intentionally permissive for compressed/web-uploaded images.
+IMAGE_MIN_SHARPNESS = float(os.getenv("IMAGE_MIN_SHARPNESS", "1.0"))
 
 # Retrieval
 RETRIEVAL_K = int(os.getenv("RETRIEVAL_K", "4"))
