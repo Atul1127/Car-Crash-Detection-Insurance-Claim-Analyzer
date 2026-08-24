@@ -32,7 +32,12 @@ faiss_index/
 faiss_url_map.json
 vectorstore/
 .chroma/
+data/clean_7class/
+data/clean_7class.yaml
 
 # Logs / temporary uploads
 *.log
 temp_upload_*
+
+# Dataset audit outputs
+runs/dataset_audit/
