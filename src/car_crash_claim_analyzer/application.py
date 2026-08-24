@@ -93,11 +93,13 @@ STRICT EVIDENCE RULES:
 3. Never infer coverage merely because generic words such as 'coverage', 'covered', 'insured', or 'policy' appear.
 4. If the evidence explicitly states that the insurer indemnifies the insured against loss of or damage to the insured vehicle, or explicitly covers accidental damage to the insured vehicle, that IS evidence of general own-damage coverage. Do not later claim that no coverage provision exists.
 5. General own-damage coverage and claim-specific applicability are different questions. If general coverage is established but the vision model reports unclassified_damage, say that general coverage is evidenced but claim-specific applicability remains uncertain because the loss category is not reliably classified.
-6. An exclusion requires an explicit applicable exclusion. A generic exclusion, a third-party liability clause, towing clause, or owner-driver injury clause must not be presented as an exclusion for physical damage to the insured vehicle unless its wording actually applies.
-7. A repair estimate, deductible, excess, or monetary amount is a condition/financial term, NOT an exclusion and NOT automatically a claim limit. State its exact scope.
-8. Do not use a condition from Section II/III/IV to negate Section I own-damage coverage unless the supplied wording explicitly connects them.
-9. Distinguish: (a) coverage explicitly established, (b) exclusion explicitly established, and (c) applicability unresolved. Never collapse these into one statement.
-10. The deterministic decision engine is the source of truth for the structured decision. Do not contradict its manual-review/uncertain result.
+6. An exclusion requires an explicit applicable exclusion for the claim scenario. A generic exclusion, a third-party liability clause, towing clause, or owner-driver injury clause must NOT be presented as an exclusion for physical damage to the insured vehicle unless its wording actually applies to the current scenario.
+7. A deductible or excess is a financial obligation borne by the insured. It is NOT an exclusion and must never be described with phrases such as 'the policy excludes the claim' or 'the insurer is not liable' unless the clause explicitly says so. Report it separately as a deductible/excess condition.
+8. A repair estimate threshold is a repair-authorization condition, not automatically a coverage limit. A monetary amount is not a claim limit unless the supplied clause explicitly identifies it as one.
+9. A towing provision is relevant only if the current claim involves towing or a towed vehicle/property. Do not list it merely because it appears in the retrieved context.
+10. Do not use a condition from Section II/III/IV to negate Section I own-damage coverage unless the supplied wording explicitly connects them.
+11. Distinguish: (a) coverage explicitly established, (b) exclusion explicitly established, (c) financial/repair condition, and (d) applicability unresolved. Never collapse these into one statement.
+12. The deterministic decision engine is the source of truth for the structured decision. Do not contradict its manual-review/uncertain result.
 
 VISION SEMANTICS:
 - YOLO labels are damage categories only, never vehicle categories.
@@ -108,13 +110,14 @@ VISION SEMANTICS:
 EVIDENCE PRIORITY:
 1. Explicit Section I / own-damage / loss-or-damage-to-the-insured-vehicle wording.
 2. Explicit applicable exclusions or conditions for that same own-damage section.
-3. Financial/repair terms that qualify a claim but do not themselves establish or negate coverage.
+3. Applicable deductible/excess and repair conditions, clearly labeled as financial or procedural terms rather than exclusions.
 4. Other sections only when their wording explicitly applies to this claim.
 
 OUTPUT RULES:
 - Keep the assessment concise and suitable for an insurance reviewer.
 - Cite source/page for every specific policy claim.
 - Never say 'the policy does not provide coverage' when the supplied evidence explicitly establishes general own-damage coverage.
+- Never call a deductible, excess, repair threshold, or unrelated towing clause an exclusion.
 - If general coverage is established but the claim cannot be classified, use: 'General own-damage coverage is evidenced in the retrieved policy, but claim-specific applicability cannot be determined from the current visual classification.'
 - If no applicable coverage clause is retrieved, use: 'Coverage is not established from the retrieved evidence.'
 
