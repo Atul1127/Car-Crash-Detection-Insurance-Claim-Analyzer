@@ -60,8 +60,23 @@ Car-Crash-Detection-Insurance-Claim-Analyzer/
 - **Computer Vision:** YOLOv8 damage detection and interpretable severity estimation.
 - **Claim Intelligence:** OCR, field extraction, normalization, and validation.
 - **Policy RAG:** PDF parsing, chunking, dense FAISS retrieval, BM25-style sparse retrieval, query expansion, reranking, and context compression.
-- **Decision Engine:** Evidence-grounded preliminary coverage and risk assessment with explicit uncertainty.
+- **Decision Engine:** deterministic, evidence-grounded preliminary coverage and risk assessment with explicit uncertainty.
 - **UI:** Chainlit.
+
+## Current YOLO Baseline
+
+The existing 8-class model has been evaluated on the held-out test set:
+
+| Metric | Score |
+|---|---:|
+| Precision | 79.75% |
+| Recall | 70.59% |
+| mAP@50 | 68.34% |
+| mAP@50-95 | 45.48% |
+
+The model includes seven specific damage classes plus `unknown`. The `unknown` class is treated by the application as an unclassified damage result rather than a vehicle class or policy condition.
+
+A dataset-audit script and an optional clean 7-class dataset builder are provided under `scripts/`. The original dataset is never modified by the cleaning workflow. Retraining is not required to run the application.
 
 ## Setup
 
@@ -79,6 +94,8 @@ Start the application:
 chainlit run app.py
 ```
 
+The structured decision engine does not depend on the local Ollama model. If Ollama is unavailable, the UI still returns the deterministic claim assessment and retrieved policy evidence instead of stopping the pipeline.
+
 ## Development
 
 Run the smoke tests:
@@ -87,8 +104,14 @@ Run the smoke tests:
 pytest -q
 ```
 
+Run YOLO evaluation on CPU:
+
+```bash
+python scripts/evaluate_yolo.py
+```
+
 See `docs/ARCHITECTURE.md` for the system design and `docs/PROJECT_STRUCTURE.md` for repository conventions.
 
 ## Status
 
-Active development toward a production-oriented multimodal insurance claim intelligence system.
+Functional end-to-end prototype with evaluated YOLO baseline, policy RAG, OCR/claim extraction, deterministic decision support, and Chainlit UI.
