@@ -1,4 +1,4 @@
-# Car Crash Claim Analyzer — Architecture
+# Car Damage Detection & Insurance Claim Analyzer — Architecture
 
 ## Target pipeline
 
