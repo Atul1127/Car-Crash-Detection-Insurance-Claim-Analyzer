@@ -92,8 +92,11 @@ class ClaimDecisionEngine:
         severity_score = damage.severity_score or 0.0
         coverage_status, coverage_hits, exclusion_hits = self._evidence_coverage_status(evidence, damage)
 
-        if unknown_damage:
-            coverage_status = "uncertain"
+        # An unknown visual subtype does not erase explicit Section I own-damage
+        # coverage. It requires manual review because the component/category is
+        # unresolved, but the policy evidence can still establish potential coverage.
+        # This prevents the detector's legacy catch-all class from incorrectly
+        # turning clear own-damage policy language into "uncertain" coverage.
 
         risk_score = min(
             1.0,
@@ -106,6 +109,8 @@ class ClaimDecisionEngine:
             + (0.05 if coverage_hits == 0 else 0.0),
         )
 
+        # Unknown damage and missing claim metadata remain manual-review signals,
+        # even when policy evidence establishes potential own-damage coverage.
         if warnings or coverage_status in {"uncertain", "potential_exclusion", "unknown"}:
             decision = "manual_review"
         else:
