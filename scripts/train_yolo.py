@@ -1,11 +1,11 @@
 """Train the car-damage YOLO detector reproducibly.
 
-Example:
-    python scripts/train_yolo.py --epochs 100 --device 0
+Examples:
+    python scripts/train_yolo.py --data data/clean_7class.yaml --weights yolov8n.pt --epochs 100 --device auto --name car_damage_7class
+    python scripts/train_yolo.py --data data/clean_7class.yaml --weights models/best.pt --epochs 100 --device cpu --name car_damage_7class
 
-The dataset currently contains a legacy ``unknown`` class. Do not remove that
-class from the YAML until the dataset has been audited; inference normalizes it
-to ``unclassified_damage``.
+The clean 7-class experiment excludes the ambiguous legacy ``unknown`` class.
+The original dataset remains untouched by the cleaning script.
 """
 
 from __future__ import annotations
@@ -13,7 +13,17 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+import torch
 from ultralytics import YOLO
+
+
+def resolve_device(requested: str) -> str:
+    if requested == "auto":
+        return "0" if torch.cuda.is_available() else "cpu"
+    if requested.isdigit() and not torch.cuda.is_available():
+        print("CUDA is unavailable; falling back to CPU.")
+        return "cpu"
+    return requested
 
 
 def main() -> None:
@@ -22,13 +32,14 @@ def main() -> None:
     parser.add_argument("--data", default="data/damage_dataset.yaml")
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--imgsz", type=int, default=640)
-    parser.add_argument("--device", default="0")
+    parser.add_argument("--device", default="auto")
     parser.add_argument("--batch", default="-1")
     parser.add_argument("--project", default="runs/detect")
     parser.add_argument("--name", default="car_damage_v2")
     args = parser.parse_args()
 
     batch: int | str = int(args.batch) if args.batch.lstrip("-").isdigit() else args.batch
+    device = resolve_device(args.device)
     Path(args.project).mkdir(parents=True, exist_ok=True)
 
     model = YOLO(args.weights)
@@ -36,7 +47,7 @@ def main() -> None:
         data=args.data,
         epochs=args.epochs,
         imgsz=args.imgsz,
-        device=args.device,
+        device=device,
         batch=batch,
         project=args.project,
         name=args.name,
