@@ -16,10 +16,9 @@ class ClaimInformationExtractor:
             r"(?:policy\s*(?:number|no\.?|#)|policy\s*id)\s*[:#-]?\s*([A-Z0-9][A-Z0-9/_-]{3,40})",
         ],
         "vehicle_registration": [
-            r"(?:vehicle\s*(?:registration|regn|number|no\.?)|registration\s*(?:number|no\.?)|regn)\s*[:#-]?\s*([A-Z0-9 -]{5,18})",
+            r"(?:vehicle\s*(?:registration|regn|number|no\.?)|registration\s*(?:number|no\.?)|regn)\s*[:#-]?\s*([A-Z0-9][A-Z0-9 -]{4,17}?)(?=\s+(?:accident|incident|loss|date|policy|claim|insured|claimant|address)\b|$)",
         ],
         "incident_date": [
-            r"(?:incident|accident|loss|date\s*of\s*(?:loss|accident|incident))\s*date\s*[:#-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})",
             r"(?:date\s*of\s*(?:loss|accident|incident)|incident\s*date|accident\s*date|loss\s*date)\s*[:#-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})",
         ],
     }
@@ -29,6 +28,8 @@ class ClaimInformationExtractor:
         return re.sub(r"\s+", " ", value).strip(" .,:;|\t\n")
 
     def extract(self, text: str) -> ClaimInformation:
+        # Preserve line boundaries as a delimiter. This prevents a field such as
+        # "Vehicle Registration" from consuming the following OCR line.
         normalized = " ".join(text.split())
         values: dict[str, str] = {}
 
