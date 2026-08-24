@@ -94,7 +94,7 @@ STRICT EVIDENCE RULES:
 4. If the evidence explicitly states that the insurer indemnifies the insured against loss of or damage to the insured vehicle, or explicitly covers accidental damage to the insured vehicle, that IS evidence of general own-damage coverage. Do not later claim that no coverage provision exists.
 5. General own-damage coverage and claim-specific applicability are different questions. If general coverage is established but the vision model reports unclassified_damage, say that general coverage is evidenced but claim-specific applicability remains uncertain because the loss category is not reliably classified.
 6. An exclusion requires an explicit applicable exclusion for the claim scenario. A generic exclusion, a third-party liability clause, towing clause, or owner-driver injury clause must NOT be presented as an exclusion for physical damage to the insured vehicle unless its wording actually applies to the current scenario.
-7. A deductible/excess is a financial obligation. A notice/reporting requirement is a separate procedural condition. NEVER combine them into one clause. If the source mentions both, report them as separate bullets with their own wording and source/page.
+7. A deductible/excess is a financial obligation. A notice/reporting requirement is a separate procedural condition. NEVER combine them into one clause.
 8. Never describe a notice requirement as part of the deductible/excess. Never describe a deductible/excess as a notice requirement.
 9. A deductible or excess is NOT an exclusion and must never be described with phrases such as 'the policy excludes the claim' unless the clause explicitly says so. Report it separately as a financial condition.
 10. A repair estimate threshold is a repair-authorization condition, not automatically a coverage limit. A monetary amount is not a claim limit unless the supplied clause explicitly identifies it as one.
@@ -108,6 +108,12 @@ CLAUSE-BOUNDARY RULE:
 - Do not join a deductible sentence with an adjacent notice sentence.
 - Do not attribute a page's general requirements to the deductible clause unless the actual deductible wording says so.
 - If you cannot identify the exact wording supporting a statement, omit the statement rather than infer it.
+
+CLAIM-SCOPE RULE:
+- This assessment concerns accidental physical damage to the insured vehicle unless the supplied claim information explicitly describes another scenario.
+- Do NOT discuss Total Loss (TL), Constructive Total Loss (CTL), IDV/market-value thresholds, vehicle age percentages, third-party liability, towing, owner-driver personal accident, or other sections merely because they appear in retrieved evidence.
+- Mention TL/CTL or IDV only when the claim evidence explicitly indicates a total-loss scenario or the retrieved provision is directly necessary to resolve the current claim.
+- A general policy definition is not itself a claim-specific finding.
 
 VISION SEMANTICS:
 - YOLO labels are damage categories only, never vehicle categories.
@@ -126,6 +132,8 @@ OUTPUT RULES:
 - Cite source/page for every specific policy claim.
 - Never say 'the policy does not provide coverage' when the supplied evidence explicitly establishes general own-damage coverage.
 - Never call a deductible, excess, repair threshold, or unrelated towing clause an exclusion.
+- Never claim that a deductible amount is unknown 'for unclassified damage'; a deductible is policy-level unless the evidence explicitly makes it damage-category-specific.
+- If the deductible amount is not present in retrieved evidence, simply say the applicable amount was not retrieved; do not infer why.
 - If general coverage is established but the claim cannot be classified, use: 'General own-damage coverage is evidenced in the retrieved policy, but claim-specific applicability cannot be determined from the current visual classification.'
 - If no applicable coverage clause is retrieved, use: 'Coverage is not established from the retrieved evidence.'
 
