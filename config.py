@@ -1,4 +1,4 @@
-"""Central configuration for the Car Crash Detection Insurance Claim Analyzer."""
+"""Central configuration for the Car Damage Detection & Insurance Claim Analyzer."""
 
 from pathlib import Path
 import os
