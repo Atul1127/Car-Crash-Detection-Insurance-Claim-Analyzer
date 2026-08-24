@@ -5,7 +5,12 @@ from pathlib import Path
 from PIL import Image, ImageChops, ImageFilter, ImageStat
 
 from car_crash_claim_analyzer.schemas import ImageQualityResult
-from config import IMAGE_MIN_BRIGHTNESS, IMAGE_MIN_HEIGHT, IMAGE_MIN_WIDTH
+from config import (
+    IMAGE_MIN_BRIGHTNESS,
+    IMAGE_MIN_HEIGHT,
+    IMAGE_MIN_SHARPNESS,
+    IMAGE_MIN_WIDTH,
+)
 
 
 class ImageQualityChecker:
@@ -16,7 +21,7 @@ class ImageQualityChecker:
         min_width: int = IMAGE_MIN_WIDTH,
         min_height: int = IMAGE_MIN_HEIGHT,
         min_brightness: float = IMAGE_MIN_BRIGHTNESS,
-        min_sharpness: float = 2.0,
+        min_sharpness: float = IMAGE_MIN_SHARPNESS,
     ):
         self.min_width = min_width
         self.min_height = min_height
@@ -37,7 +42,7 @@ class ImageQualityChecker:
                 brightness = float(ImageStat.Stat(image).mean[0])
                 metrics["brightness"] = round(brightness, 2)
 
-                # Mean absolute high-frequency difference is a simple blur proxy.
+                # Mean absolute high-frequency difference is a blur proxy.
                 blurred = image.filter(ImageFilter.GaussianBlur(radius=2))
                 high_frequency = ImageChops.difference(image, blurred)
                 sharpness = float(ImageStat.Stat(high_frequency).mean[0])
