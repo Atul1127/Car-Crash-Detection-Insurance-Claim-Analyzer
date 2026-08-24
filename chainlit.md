@@ -1,4 +1,4 @@
-# Car Crash Detection & Insurance Claim Analyzer
+# Car Damage Detection & Insurance Claim Analyzer
 
 Upload a vehicle-damage image and optionally a claim document.
 
