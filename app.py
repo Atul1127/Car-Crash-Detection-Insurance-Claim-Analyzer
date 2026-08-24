@@ -19,7 +19,7 @@ async def start():
     cl.user_session.set("damage_report", None)
     await cl.Message(
         content=(
-            "🚗 **Car Crash Detection & Insurance Claim Analyzer**\n\n"
+            "🚗 **Car Damage Detection & Insurance Claim Analyzer**\n\n"
             "Upload a vehicle image and optionally a claim document.\n\n"
             "**Pipeline:** Image Quality → YOLOv8 → Damage → Severity → OCR/Claim Info → Hybrid Policy RAG → Decision Engine"
         )
