@@ -1,4 +1,4 @@
-# 🚗 Car Crash Detection & Insurance Claim Analyzer
+# 🚗 Car Damage Detection & Insurance Claim Analyzer
 
 An end-to-end AI system that combines **computer vision, claim-document extraction, hybrid policy RAG, and deterministic insurance-claim decision support** in a Chainlit application.
 
@@ -62,7 +62,7 @@ A dataset-audit script and optional clean 7-class dataset builder are provided u
 ## 🏗️ Project structure
 
 ```text
-Car-Crash-Detection-Insurance-Claim-Analyzer/
+Car-Damage-Detection-and-Insurance-Claim-Analyzer/
 ├── app.py
 ├── config.py
 ├── chainlit.md
