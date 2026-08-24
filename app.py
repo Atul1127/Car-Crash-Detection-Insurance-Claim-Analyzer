@@ -150,11 +150,10 @@ async def main(message: cl.Message):
         response = await application.reason(message_query, damage_report, claim_info, policy_context)
         llm_status.content = "✅ **Claim Reasoning Complete**"
         await llm_status.update()
-    except Exception as exc:
+    except Exception:
         response = (
-            "The local LLM was unavailable, so the assessment below is based on the "
-            "deterministic decision engine and retrieved policy evidence. "
-            f"LLM error: `{type(exc).__name__}: {exc}`"
+            "The local language model is unavailable. The structured assessment below is still valid "
+            "because it is produced independently from the retrieved policy evidence and decision rules."
         )
         llm_status.content = "⚠️ **LLM unavailable — deterministic assessment continued**"
         await llm_status.update()
