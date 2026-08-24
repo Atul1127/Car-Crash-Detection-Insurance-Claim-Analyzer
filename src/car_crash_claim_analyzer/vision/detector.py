@@ -24,11 +24,17 @@ LEGACY_UNKNOWN_LABELS = {"unknown", "unclassified", "other"}
 class DamageDetector:
     """Wrap YOLO inference behind a stable application interface.
 
-    The current trained checkpoint still contains a legacy ``unknown`` class.
-    That class is not exposed as a business damage category. At inference time
-    it is normalized to ``unclassified_damage`` so downstream claim reasoning
-    cannot mistake it for a meaningful damage type or vehicle class.
+    The checkpoint still contains a legacy ``unknown`` class. It is never
+    exposed as a business damage category. If the checkpoint returns only
+    ``unknown`` detections, a single lower-threshold rescue pass is used to
+    recover a supported damage class when the model has evidence for one.
+    If no supported class reaches the rescue threshold, the result remains
+    ``unclassified_damage`` and is sent to manual review.
     """
+
+    RESCUE_CONFIDENCE = 0.10
+    RESCUE_MIN_KNOWN_CONFIDENCE = 0.20
+    MAX_RESCUE_DETECTIONS = 3
 
     def __init__(
         self,
@@ -69,6 +75,34 @@ class DamageDetector:
             return UNCLASSIFIED_LABEL
         return normalized
 
+    def _collect_detections(self, result, only_known: bool = False) -> list[DamageDetection]:
+        detections: list[DamageDetection] = []
+        if result.boxes is None:
+            return detections
+
+        result.names = dict(result.names)
+        for box in result.boxes:
+            cls_id = int(box.cls[0])
+            confidence = float(box.conf[0])
+            raw_label = str(self.model.names[cls_id])
+            raw_normalized = raw_label.strip().lower()
+            if only_known and raw_normalized not in KNOWN_DAMAGE_CLASSES:
+                continue
+
+            label = self._normalize_label(raw_label)
+            if raw_normalized in LEGACY_UNKNOWN_LABELS:
+                result.names[cls_id] = UNCLASSIFIED_LABEL
+
+            coords = tuple(float(v) for v in box.xyxy[0].tolist())
+            detections.append(
+                DamageDetection(
+                    label=label,
+                    confidence=confidence,
+                    bbox=coords,  # type: ignore[arg-type]
+                )
+            )
+        return detections
+
     def predict(self, image_path: str | Path, device: str | int | None = None) -> DamageAssessment:
         inference_device = self._resolve_device(YOLO_DEVICE if device is None else device)
         results = self.model.predict(
@@ -83,33 +117,38 @@ class DamageDetector:
             self.last_result = None
             return DamageAssessment(detections=[])
 
-        self.last_result = results[0]
-        detections: list[DamageDetection] = []
         result = results[0]
-        if result.boxes is None:
-            return DamageAssessment(detections=detections)
+        detections = self._collect_detections(result)
 
-        # Keep the annotated image semantically consistent with the normalized
-        # application label instead of rendering the legacy ``unknown`` class.
-        result.names = dict(result.names)
-
-        for box in result.boxes:
-            cls_id = int(box.cls[0])
-            confidence = float(box.conf[0])
-            coords = tuple(float(v) for v in box.xyxy[0].tolist())
-            raw_label = str(self.model.names[cls_id])
-            label = self._normalize_label(raw_label)
-            if raw_label.strip().lower() in LEGACY_UNKNOWN_LABELS:
-                result.names[cls_id] = UNCLASSIFIED_LABEL
-
-            detections.append(
-                DamageDetection(
-                    label=label,
-                    confidence=confidence,
-                    bbox=coords,  # type: ignore[arg-type]
-                )
+        # The legacy unknown class can dominate even when the model has weak
+        # evidence for a supported damage class. Only in that case, perform one
+        # cheaper recovery pass instead of lowering the normal threshold for
+        # every request.
+        known_detections = [d for d in detections if d.label in KNOWN_DAMAGE_CLASSES]
+        if not known_detections and detections:
+            rescue_results = self.model.predict(
+                source=str(image_path),
+                conf=self.RESCUE_CONFIDENCE,
+                iou=self.iou,
+                save=False,
+                device=inference_device,
+                verbose=False,
             )
+            if rescue_results:
+                rescue_result = rescue_results[0]
+                known_detections = [
+                    d
+                    for d in self._collect_detections(rescue_result, only_known=True)
+                    if d.confidence >= self.RESCUE_MIN_KNOWN_CONFIDENCE
+                ]
+                known_detections.sort(key=lambda d: d.confidence, reverse=True)
+                if known_detections:
+                    self.last_result = rescue_result
+                    return DamageAssessment(
+                        detections=known_detections[: self.MAX_RESCUE_DETECTIONS]
+                    )
 
+        self.last_result = result
         return DamageAssessment(detections=detections)
 
     def render_last_result(self):
