@@ -35,7 +35,7 @@ def test_explicit_own_damage_provision_establishes_potential_coverage():
     assert result.decision == "preliminary_coverage_review"
 
 
-def test_unclassified_damage_forces_manual_review():
+def test_unclassified_damage_keeps_potential_coverage_but_forces_manual_review():
     evidence = [
         PolicyEvidence(
             text="The Company will indemnify the insured against loss of or damage to the insured vehicle.",
@@ -44,7 +44,7 @@ def test_unclassified_damage_forces_manual_review():
     ]
     claim = ClaimInformation(policy_number="POL123", incident_date="2026-08-24")
     result = ClaimDecisionEngine().evaluate(_damage("unclassified_damage"), claim, evidence)
-    assert result.coverage_status == "uncertain"
+    assert result.coverage_status == "potentially_covered"
     assert result.decision == "manual_review"
     assert any("must not be interpreted as a vehicle class" in w for w in result.warnings)
 
