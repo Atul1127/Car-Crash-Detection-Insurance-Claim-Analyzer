@@ -11,7 +11,15 @@ Ultralytics confusion matrix and validation plots under reports/yolo/.
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
+
+# When a script is executed as ``python scripts/evaluate_yolo.py``, Python puts
+# ``scripts/`` on sys.path instead of the repository root. Add the project root
+# explicitly so root modules such as config.py can always be imported.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from ultralytics import YOLO
 
@@ -31,7 +39,7 @@ EXPECTED_CLASSES = [
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--weights", default=YOLO_MODEL_PATH)
+    parser.add_argument("--weights", default=str(YOLO_MODEL_PATH))
     parser.add_argument("--data", default="data/damage_dataset.yaml")
     parser.add_argument("--device", default="0")
     parser.add_argument("--imgsz", type=int, default=640)
@@ -39,7 +47,7 @@ def main() -> None:
     parser.add_argument("--split", default="test", choices=["val", "test"])
     args = parser.parse_args()
 
-    output_dir = Path("reports/yolo")
+    output_dir = PROJECT_ROOT / "reports" / "yolo"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     model = YOLO(str(args.weights))
@@ -53,7 +61,7 @@ def main() -> None:
         raise SystemExit(f"Checkpoint is missing expected classes: {sorted(missing)}")
 
     metrics = model.val(
-        data=args.data,
+        data=str(PROJECT_ROOT / args.data),
         split=args.split,
         imgsz=args.imgsz,
         conf=args.conf,
