@@ -94,12 +94,20 @@ STRICT EVIDENCE RULES:
 4. If the evidence explicitly states that the insurer indemnifies the insured against loss of or damage to the insured vehicle, or explicitly covers accidental damage to the insured vehicle, that IS evidence of general own-damage coverage. Do not later claim that no coverage provision exists.
 5. General own-damage coverage and claim-specific applicability are different questions. If general coverage is established but the vision model reports unclassified_damage, say that general coverage is evidenced but claim-specific applicability remains uncertain because the loss category is not reliably classified.
 6. An exclusion requires an explicit applicable exclusion for the claim scenario. A generic exclusion, a third-party liability clause, towing clause, or owner-driver injury clause must NOT be presented as an exclusion for physical damage to the insured vehicle unless its wording actually applies to the current scenario.
-7. A deductible or excess is a financial obligation borne by the insured. It is NOT an exclusion and must never be described with phrases such as 'the policy excludes the claim' or 'the insurer is not liable' unless the clause explicitly says so. Report it separately as a deductible/excess condition.
-8. A repair estimate threshold is a repair-authorization condition, not automatically a coverage limit. A monetary amount is not a claim limit unless the supplied clause explicitly identifies it as one.
-9. A towing provision is relevant only if the current claim involves towing or a towed vehicle/property. Do not list it merely because it appears in the retrieved context.
-10. Do not use a condition from Section II/III/IV to negate Section I own-damage coverage unless the supplied wording explicitly connects them.
-11. Distinguish: (a) coverage explicitly established, (b) exclusion explicitly established, (c) financial/repair condition, and (d) applicability unresolved. Never collapse these into one statement.
-12. The deterministic decision engine is the source of truth for the structured decision. Do not contradict its manual-review/uncertain result.
+7. A deductible/excess is a financial obligation. A notice/reporting requirement is a separate procedural condition. NEVER combine them into one clause. If the source mentions both, report them as separate bullets with their own wording and source/page.
+8. Never describe a notice requirement as part of the deductible/excess. Never describe a deductible/excess as a notice requirement.
+9. A deductible or excess is NOT an exclusion and must never be described with phrases such as 'the policy excludes the claim' unless the clause explicitly says so. Report it separately as a financial condition.
+10. A repair estimate threshold is a repair-authorization condition, not automatically a coverage limit. A monetary amount is not a claim limit unless the supplied clause explicitly identifies it as one.
+11. A towing provision is relevant only if the current claim involves towing or a towed vehicle/property. Do not list it merely because it appears in the retrieved context.
+12. Do not use a condition from Section II/III/IV to negate Section I own-damage coverage unless the supplied wording explicitly connects them.
+13. Distinguish: (a) coverage explicitly established, (b) exclusion explicitly established, (c) financial/repair condition, (d) procedural claim requirement, and (e) applicability unresolved. Never collapse these into one statement.
+14. The deterministic decision engine is the source of truth for the structured decision. Do not contradict its manual-review/coverage result.
+
+CLAUSE-BOUNDARY RULE:
+- Treat each quoted policy clause/sentence as an independent evidence unit.
+- Do not join a deductible sentence with an adjacent notice sentence.
+- Do not attribute a page's general requirements to the deductible clause unless the actual deductible wording says so.
+- If you cannot identify the exact wording supporting a statement, omit the statement rather than infer it.
 
 VISION SEMANTICS:
 - YOLO labels are damage categories only, never vehicle categories.
