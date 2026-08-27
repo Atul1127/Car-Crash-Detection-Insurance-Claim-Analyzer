@@ -1,50 +1,53 @@
 # 🚗 Car Damage Detection & Insurance Claim Analyzer
 
-An end-to-end AI system that combines **computer vision, claim-document extraction, hybrid policy RAG, and deterministic insurance-claim decision support** in a Chainlit application.
+An end-to-end AI decision-support prototype that combines **computer vision, claim-document extraction, policy RAG, deterministic decision logic, and grounded LLM explanations** for vehicle insurance claims.
 
 > **Important:** This is a decision-support prototype, not an automated insurance approval/denial system. Final claim decisions require human review.
 
-## 🎯 What the system does
+## Overview
 
-Upload a vehicle image and optionally a claim document. The system runs:
+The application accepts a vehicle image and, optionally, a claim document. It processes the inputs through the following pipeline:
 
 ```text
 Vehicle Image
-     ↓
+      │
+      ▼
 Image Quality Gate
-     ↓
+      │
+      ▼
 YOLOv8 Damage Detection
-     ↓
-Damage Classification
-     ↓
-Severity Estimation
-     │
-     ├───────────────┐
-     ↓               ↓
-Claim OCR       Policy Document
-+ Metadata      Hybrid RAG
-     │               │
-     └───────┬───────┘
-             ↓
+      │
+      ▼
+Damage Classification + Severity
+      │
+      ├───────────────┐
+      ▼               ▼
+Claim OCR       Policy Documents
++ Extraction        │
+      │             ▼
+      │         Hybrid RAG
+      │             │
+      └───────┬─────┘
+              ▼
       Deterministic Decision
-       Risk + Coverage
-             ↓
-      Grounded Explanation
+              │
+              ▼
+       Grounded Explanation
 ```
 
-## ✨ Key engineering features
+## Key Features
 
-- **Computer Vision:** YOLOv8 damage detection with seven specific damage classes plus `unknown`.
-- **Image Quality:** resolution/blur quality gate before inference.
-- **Severity:** interpretable severity score derived from detection evidence.
-- **Claim Intelligence:** OCR, field extraction, normalization, and validation for common claim metadata.
+- **Damage Detection:** YOLOv8-based vehicle damage detection.
+- **Image Quality Gate:** checks image quality before running vision inference.
+- **Severity Estimation:** derives an interpretable severity assessment from detection evidence.
+- **Claim Extraction:** OCR, field extraction, normalization, and validation for claim documents.
 - **Policy RAG:** PDF parsing, chunking, dense FAISS retrieval, sparse retrieval, query expansion, reranking, and context compression.
-- **Decision Engine:** deterministic coverage/risk assessment with explicit `manual_review` and uncertainty states.
-- **LLM Reasoning:** generates an explanation from retrieved evidence; it does **not** replace the deterministic decision engine.
-- **Resilience:** the structured assessment can still be returned when the local LLM is unavailable.
-- **Testing/CI:** automated pytest suite and GitHub Actions validation.
+- **Decision Engine:** deterministic coverage/risk assessment with explicit uncertainty and manual-review states.
+- **Grounded LLM Explanation:** explains the structured result using retrieved evidence without overriding the decision engine.
+- **Resilience:** structured decision support remains available when the optional local LLM is unavailable.
+- **Testing & CI:** pytest tests and GitHub Actions validation.
 
-## 📊 YOLO baseline
+## YOLO Baseline
 
 The existing 8-class model was evaluated on the held-out test set:
 
@@ -55,37 +58,63 @@ The existing 8-class model was evaluated on the held-out test set:
 | mAP@50 | **68.34%** |
 | mAP@50-95 | **45.48%** |
 
-The model includes seven specific damage classes plus `unknown`. The application maps `unknown` to **unclassified damage**; it is never interpreted as a vehicle class or policy condition.
+The model contains seven specific damage classes plus `unknown`. The application treats `unknown` as **unclassified damage** and does not interpret it as a vehicle class or policy condition.
 
-A dataset-audit script and optional clean 7-class dataset builder are provided under `scripts/`. The original dataset is not modified by the cleaning workflow. **Retraining is not required to run the application.**
-
-## 🏗️ Project structure
+## Project Structure
 
 ```text
 Car-Damage-Detection-and-Insurance-Claim-Analyzer/
+│
+├── README.md
 ├── app.py
 ├── config.py
 ├── chainlit.md
 ├── requirements.txt
+├── pytest.ini
 ├── .env.example
+├── .gitignore
+│
 ├── src/
 │   └── car_crash_claim_analyzer/
 │       ├── vision/
 │       ├── claim/
 │       ├── rag/
 │       ├── decision/
-│       ├── pipeline.py
-│       └── schemas.py
+│       ├── application.py
+│       └── ...
+│
 ├── data/
 │   ├── policies/
-│   └── samples/
+│   ├── samples/
+│   ├── damage_dataset.yaml
+│   └── README.md
+│
 ├── models/
+│   └── README.md
+│
 ├── scripts/
+│   ├── audit_yolo_dataset.py
+│   ├── evaluate_yolo.py
+│   └── train_yolo.py
+│
 ├── tests/
-└── docs/
+├── docs/
+└── .github/
+    └── workflows/
 ```
 
-## 🚀 Setup
+Development-only datasets, caches, generated artifacts, local environments, model weights, and temporary files are excluded from the repository.
+
+## Setup
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/Atul1127/Car-Damage-Detection-and-Insurance-Claim-Analyzer.git
+cd Car-Damage-Detection-and-Insurance-Claim-Analyzer
+```
+
+### 2. Create a virtual environment
 
 ```bash
 python -m venv .venv
@@ -97,86 +126,100 @@ Windows:
 .venv\Scripts\activate
 ```
 
-Install dependencies:
+Linux/macOS:
+
+```bash
+source .venv/bin/activate
+```
+
+### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Put the trained YOLO weights at:
+### 4. Configure environment variables
+
+Copy `.env.example` to `.env` and provide the required API configuration for the optional LLM functionality.
+
+Never commit `.env` or API keys to GitHub.
+
+### 5. Add model weights
+
+Place the trained YOLO weights at:
 
 ```text
 models/best.pt
 ```
 
-Model weights are intentionally not committed to Git.
+Model weights are intentionally excluded from Git.
 
-Start Chainlit:
+### 6. Run the application
 
 ```bash
 chainlit run app.py
 ```
 
-## 🧪 Development and evaluation
+## Testing & Evaluation
 
-Run tests:
+Run the test suite:
 
 ```bash
 pytest -q
 ```
 
-Evaluate YOLO on CPU:
+Evaluate the YOLO model:
 
 ```bash
 python scripts/evaluate_yolo.py
 ```
 
-Audit the dataset:
+Audit the YOLO dataset:
 
 ```bash
 python scripts/audit_yolo_dataset.py
 ```
 
-See:
+Training is optional and is not required to run the existing application:
 
-- `docs/ARCHITECTURE.md` — system design
-- `docs/PROJECT_STRUCTURE.md` — repository conventions
+```bash
+python scripts/train_yolo.py
+```
 
-## 🔐 Decision-safety design
+## Decision-Safety Design
 
-The system deliberately separates **prediction**, **retrieval**, **decision**, and **explanation**:
+The system deliberately separates **prediction, retrieval, decision, and explanation**:
 
 1. Vision models report detected damage and severity.
 2. Retrieval supplies policy evidence with source/page metadata.
-3. The deterministic decision engine produces the structured decision.
-4. The LLM explains the evidence without overriding the structured decision.
-5. Missing information results in explicit warnings/manual review rather than fabricated values.
+3. The deterministic decision engine produces the structured claim assessment.
+4. The LLM explains the result from available evidence without overriding the structured decision.
+5. Missing or uncertain information results in warnings/manual review rather than fabricated values.
 
-This prevents an LLM from turning a weak visual prediction or unrelated policy clause into an automatic approval or denial.
+This design reduces the risk of an LLM turning uncertain visual predictions or unrelated policy text into an automatic insurance decision.
 
-## ⚠️ Known limitations
+## Documentation
 
-- The current YOLO baseline is a project prototype rather than a production-grade damage estimator.
-- `unknown`/unclassified damage correctly leads to uncertainty rather than a fabricated damage subtype.
-- OCR quality depends on document scan quality and layout.
-- Policy applicability depends on the retrieved policy text and available claim metadata.
-- A missing policy number, incident date, or other claim field can force manual review.
-- The local LLM is optional; deterministic decision support remains available without it.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system architecture and data flow.
+- [`docs/PROJECT_STRUCTURE.md`](docs/PROJECT_STRUCTURE.md) — repository organization.
+- [`data/README.md`](data/README.md) — dataset and policy-data information.
+- [`models/README.md`](models/README.md) — model-weight instructions.
 
-## 📌 Portfolio talking points
+## Limitations
 
-This project demonstrates more than model training:
+- The YOLO baseline is a project prototype, not a production-grade damage estimator.
+- Damage severity is an interpretable project-level estimate and should not be treated as a professional repair assessment.
+- OCR quality depends on document quality and layout.
+- Policy applicability depends on retrieved policy text and available claim metadata.
+- Missing claim information can result in manual review.
+- The optional local LLM may be unavailable; deterministic decision support can still operate without it.
 
-- Computer vision inference and evaluation
-- Dataset auditing and reproducible evaluation
-- OCR and structured information extraction
-- Hybrid retrieval and reranking
-- Evidence-grounded LLM workflows
-- Deterministic business rules around an LLM
-- Failure handling and uncertainty propagation
-- Automated testing and CI
-- Interactive AI application development with Chainlit
+## Tech Stack
+
+**Python · YOLOv8 · OpenCV · OCR · FAISS · BM25/Sparse Retrieval · Reranking · RAG · LLM · Chainlit · Pytest · GitHub Actions**
 
 ## Status
 
-**Functional end-to-end prototype** with an evaluated YOLO baseline, image quality gate, severity estimation, claim OCR/extraction, policy RAG, deterministic decision support, grounded LLM explanation, Chainlit UI, automated tests, and CI.
+**Completed functional prototype.**
+
+The repository is intentionally kept as a clean, reproducible portfolio project rather than an actively evolving production system.
